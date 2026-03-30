@@ -24,12 +24,23 @@ CholeskyMatrix::CholeskyMatrix(const std::vector<double>& corr_matrix, int K)
     if (static_cast<int>(corr_matrix.size()) != K * K)
         throw std::invalid_argument("corr_matrix size != K*K");
 
-    // TODO: replace with Cholesky-Banachiewicz or LAPACK dpotrf.
-    // Stub: copy lower triangle from input, assuming it is already the Cholesky
-    // factor (identity matrix passes through unchanged).
-    for (int i = 0; i < K; ++i)
-        for (int j = 0; j <= i; ++j)
-            data_[i * row_stride_ + j] = corr_matrix[i * K + j];
+    // Cholesky-Banachiewicz decomposition: A = L * L^T.
+    // Reads from the symmetric input corr_matrix and writes into data_ (lower triangle).
+    for (int i = 0; i < K; ++i) {
+        for (int j = 0; j <= i; ++j) {
+            double sum = corr_matrix[static_cast<std::size_t>(i) * K + j];
+            for (int k = 0; k < j; ++k)
+                sum -= data_[i * row_stride_ + k] * data_[j * row_stride_ + k];
+            if (i == j) {
+                if (sum <= 0.0)
+                    throw std::invalid_argument(
+                        "correlation matrix is not positive-definite");
+                data_[i * row_stride_ + j] = std::sqrt(sum);
+            } else {
+                data_[i * row_stride_ + j] = sum / data_[j * row_stride_ + j];
+            }
+        }
+    }
 }
 
 // ─── Static factories ────────────────────────────────────────────────────────
@@ -41,9 +52,9 @@ CholeskyMatrix CholeskyMatrix::identity(int K) {
 }
 
 CholeskyMatrix CholeskyMatrix::wwr_2x2(double rho) {
-    // L = [[1, 0], [rho, sqrt(1-rho^2)]]
-    const double sqrt_term = std::sqrt(1.0 - rho * rho);
-    return CholeskyMatrix({1.0, 0.0, rho, sqrt_term}, 2);
+    // Correlation matrix [[1, rho], [rho, 1]] — constructor factorises it.
+    // Resulting Cholesky factor: L = [[1, 0], [rho, sqrt(1-rho²)]].
+    return CholeskyMatrix({1.0, rho, rho, 1.0}, 2);
 }
 
 // ─── Accessor ────────────────────────────────────────────────────────────────
@@ -62,14 +73,24 @@ void CholeskyMatrix::apply(
     std::size_t             M_padded,
     int                     K) const noexcept
 {
-    // TODO: vectorise inner loop over M_padded paths using SimdOps<Arch>.
-    // Stub: scalar matrix-vector multiply per path.
-    for (std::size_t m = 0; m < M_padded; ++m) {
-        for (int i = 0; i < K; ++i) {
-            double acc = 0.0;
-            for (int j = 0; j <= i; ++j)
-                acc += at(i, j) * independent[static_cast<std::size_t>(j) * M_padded + m];
-            correlated[static_cast<std::size_t>(i) * M_padded + m] = acc;
+    // SIMD over the M_padded (path) dimension.
+    // For each output row i, accumulate: correlated[i][m] = Σ_j L[i][j] * x[j][m].
+    // Scalar Cholesky coefficients L[i][j] are broadcast via set1.
+    // M_padded is guaranteed a multiple of Arch::WIDTH.
+
+    const std::size_t step = Arch::WIDTH;
+
+    for (int i = 0; i < K; ++i) {
+        for (std::size_t m = 0; m < M_padded; m += step) {
+            auto acc = SimdOps<Arch>::zero();
+            for (int j = 0; j <= i; ++j) {
+                auto L_ij = SimdOps<Arch>::set1(at(i, j));
+                auto x_j  = SimdOps<Arch>::load(
+                    independent.data() + static_cast<std::size_t>(j) * M_padded + m);
+                acc = SimdOps<Arch>::fmadd(L_ij, x_j, acc);
+            }
+            SimdOps<Arch>::store(
+                correlated.data() + static_cast<std::size_t>(i) * M_padded + m, acc);
         }
     }
 }

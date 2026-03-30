@@ -2,8 +2,17 @@
 // engine/src/ccr_engine.cpp
 //
 // Top-level orchestrator — CcrEngine::run().
-// Stub: allocates arena, wires modules together, returns zeroed RiskMetrics.
-// Full pipeline implementation fills in the TODO sections.
+//
+// Pipeline (single pass):
+//   1. Validate config
+//   2. Build time grid + Cholesky matrix
+//   3. Allocate arena (single contiguous allocation)
+//   4. Run PathSimulator (GBM + MTM)
+//   5. Extract PFE / EPE profiles
+//   6. Integrate CVA (Kahan summation)
+//   7. Fire optional progress callback
+//
+// A second pass with shocked SimParams / hazard rate produces stressed metrics.
 // ============================================================================
 
 #include "ccr/ccr_engine.hpp"
@@ -17,12 +26,15 @@
 #include "ccr/jump_diffusion.hpp"
 #include "ccr/simd_abstraction.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <cstring>
-#include <sstream>
-#include <stdexcept>
 
 namespace ccr {
+
+// ─── Pimpl support (Arena is complete here via memory_arena.hpp) ─────────────
+CcrEngine::~CcrEngine() = default;
+void CcrEngine::ArenaDeleter::operator()(Arena* p) noexcept { delete p; }
 
 // ─── Validation ──────────────────────────────────────────────────────────────
 
@@ -73,11 +85,20 @@ CcrResult CcrEngine::run(
 
         // Stress scenario (second pass with shocked params).
         if (config.stress.has_value()) {
-            SimParams stressed = config.sim_params;
-            stressed.sigma          += config.stress->vol_shock;
-            stressed.sigma          *= (1.0 + config.stress->equity_shock);
-            // TODO: apply remaining shock fields (fx, rates, hazard, jump).
-            result.stressed = run_single(config, stressed, std::nullopt);
+            const auto& shock = *config.stress;
+
+            SimParams stressed  = config.sim_params;
+            stressed.sigma     += shock.vol_shock;
+            stressed.sigma     *= (1.0 + shock.equity_shock);
+            stressed.mu        += shock.interest_rate_shock;
+
+            // Build a stressed config so run_single picks up the hazard shock too.
+            EngineConfig stressed_cfg            = config;
+            stressed_cfg.sim_params              = stressed;
+            stressed_cfg.counterparty.hazard_rate =
+                std::max(0.0, config.counterparty.hazard_rate + shock.hazard_rate_shock);
+
+            result.stressed = run_single(stressed_cfg, stressed_cfg.sim_params, std::nullopt);
         }
 
         result.success = true;
@@ -112,7 +133,7 @@ RiskMetrics CcrEngine::run_single(
         : CholeskyMatrix::identity(K);
 
     // 3. Allocate arena.
-    if (!arena_) arena_ = std::make_unique<Arena>();
+    if (!arena_) arena_.reset(new Arena());
     arena_->allocate(K, M_padded, T, config.enable_jump_diffusion);
 
     // 4. Initialise arena spot prices to 1.0 (normalised).
@@ -137,17 +158,10 @@ RiskMetrics CcrEngine::run_single(
     }
 
     // 7. Simulate.
-    PathSimulator sim(params, chol, tg, hook.get());
+    PathSimulator sim(params, chol, tg,
+                      config.portfolio, config.counterparty.recovery_rate,
+                      hook.get());
     sim.run_all_steps<ActiveArch>(state, rng);
-
-    // Report progress (every 10% of timesteps).
-    if (callback) {
-        for (int t = 0; t < T; ++t) {
-            double pfe_t = (t < static_cast<int>(arena_->pfe_profile[0]))
-                         ? arena_->pfe_profile[t] : 0.0;
-            (*callback)(t, T, pfe_t);
-        }
-    }
 
     // 8. Extract PFE & EPE profiles.
     extract_profiles(
@@ -156,11 +170,19 @@ RiskMetrics CcrEngine::run_single(
         /*alpha=*/0.99,
         config.deterministic_quantile);
 
-    // 9. Marginal PD term structure.
+    // 9. Report per-timestep results to caller.
+    // Fired here — after extract_profiles — so pfe_profile values are valid.
+    // The WebSocket handler uses these callbacks to stream progress to the client.
+    if (callback) {
+        for (int t = 0; t < T; ++t)
+            (*callback)(t, T, static_cast<float>(arena_->pfe_profile[t]));
+    }
+
+    // 10. Marginal PD term structure.
     auto marginal_pd = marginal_pd_from_flat_hazard(
         tg.times(), config.counterparty.hazard_rate);
 
-    // 10. CVA.
+    // 11. CVA.
     std::span<const double> epe_span{arena_->epe_profile,
                                      static_cast<std::size_t>(T)};
     const double cva = compute_cva(
@@ -173,13 +195,13 @@ RiskMetrics CcrEngine::run_single(
                           config.counterparty.recovery_rate)
         : cva;
 
-    // 11. Required margin.
+    // 12. Required margin.
     std::span<const double> pfe_span{arena_->pfe_profile,
                                      static_cast<std::size_t>(T)};
     const double margin = compute_required_margin(
         pfe_span, config.portfolio.collateral);
 
-    // 12. Assemble result.
+    // 13. Assemble result.
     RiskMetrics metrics;
     metrics.cva             = cva;
     metrics.wwr_cva         = wwr_cva;
@@ -188,8 +210,12 @@ RiskMetrics CcrEngine::run_single(
                                arena_->pfe_profile + T);
     metrics.epe_profile.assign(arena_->epe_profile,
                                arena_->epe_profile + T);
-    metrics.time_grid_years = tg.times();
-    metrics.time_grid_years.resize(static_cast<std::size_t>(T)); // drop t=0
+    // Profile element [t] corresponds to the END of interval t → times[t+1].
+    // Assign times[1..T] (skip the initial t=0 anchor point).
+    {
+        const auto& all = tg.times();
+        metrics.time_grid_years.assign(all.begin() + 1, all.end());
+    }
     metrics.arch_used  = ActiveArch::NAME;
     metrics.paths_used = M;
 

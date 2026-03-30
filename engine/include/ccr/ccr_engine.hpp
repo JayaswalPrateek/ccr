@@ -55,7 +55,7 @@ using ProgressCallback = std::function<void(int timestep, int total, double pfe_
 class CcrEngine {
 public:
     explicit CcrEngine() = default;
-    ~CcrEngine()         = default;
+    ~CcrEngine();  // defined in ccr_engine.cpp where Arena is complete
 
     // Non-copyable, movable
     CcrEngine(const CcrEngine&)            = delete;
@@ -109,8 +109,11 @@ private:
 
     // Arena memory owned by this engine instance — reset on each run().
     // Defined in memory_arena.hpp (private header, not part of public API).
+    // Custom deleter avoids requiring Arena to be complete in this header
+    // (pimpl idiom: std::default_delete would static_assert sizeof > 0).
     struct Arena;
-    std::unique_ptr<Arena> arena_;
+    struct ArenaDeleter { void operator()(Arena*) noexcept; };
+    std::unique_ptr<Arena, ArenaDeleter> arena_;
 };
 
 } // namespace ccr

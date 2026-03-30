@@ -1,13 +1,17 @@
 // ============================================================================
 // engine/src/exposure_engine.cpp
 //
-// E(t) = max(V(t), 0) for each path.
-// Stub: scalar loop with std::max.
-// Replace inner loop with SimdOps<Arch>::max(v, zero) in implementation phase.
+// E(t) = max(V(t), 0) for each path — branch-free via SIMD max.
+//
+// compute_exposures_step<Arch>     — single timestep column (M_padded elements)
+// compute_exposures_full<Arch>     — full T × M_padded exposure matrix
+// compute_exposures_collateralised — net-of-collateral exposure (Phase 2 stub)
+//
+// M_padded is guaranteed a multiple of Arch::WIDTH by PathSimulator::pad_to_width,
+// so the SIMD loop requires no tail handling.
 // ============================================================================
 
 #include "ccr/exposure_engine.hpp"
-#include <algorithm>
 
 namespace ccr {
 
@@ -18,10 +22,16 @@ void compute_exposures_step(
     std::span<const double> portfolio_values,
     std::span<double>       exposures_col) noexcept
 {
-    // TODO: replace with SimdOps<Arch>::max(load(pv), zero()) store.
-    const std::size_t n = portfolio_values.size();
-    for (std::size_t m = 0; m < n; ++m)
-        exposures_col[m] = portfolio_values[m] > 0.0 ? portfolio_values[m] : 0.0;
+    // E(t) = max(V(t), 0) — branch-free via SimdOps<Arch>::max.
+    // M_padded is guaranteed to be a multiple of Arch::WIDTH.
+    const std::size_t n    = portfolio_values.size();
+    const std::size_t step = Arch::WIDTH;
+    const auto        zero = SimdOps<Arch>::zero();
+
+    for (std::size_t m = 0; m < n; m += step) {
+        auto v = SimdOps<Arch>::load(portfolio_values.data() + m);
+        SimdOps<Arch>::store(exposures_col.data() + m, SimdOps<Arch>::max(v, zero));
+    }
 }
 
 // ─── Full exposure matrix ─────────────────────────────────────────────────────

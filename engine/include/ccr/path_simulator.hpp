@@ -56,6 +56,8 @@ public:
         const SimParams&      params,
         const CholeskyMatrix& cholesky,
         const TimeGrid&       time_grid,
+        const PortfolioConfig& portfolio,
+        double                recovery_rate,
         JumpDiffusionHook*    jump_hook = nullptr);  ///< nullable — no-op if nullptr
 
     // ── Core simulation step ─────────────────────────────────────────────────
@@ -87,6 +89,8 @@ private:
     SimParams             params_;
     const CholeskyMatrix& cholesky_;
     const TimeGrid&       time_grid_;
+    PortfolioConfig       portfolio_;
+    double                recovery_rate_;
     JumpDiffusionHook*    jump_hook_;
 };
 
