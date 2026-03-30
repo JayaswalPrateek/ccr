@@ -1,0 +1,8 @@
+{
+	"InstallScripts" : 
+	[
+		"/Users/prateek/Code/capstone/ccr/build/cmake_install.cmake",
+		"/Users/prateek/Code/capstone/ccr/build/engine/cmake_install.cmake"
+	],
+	"Parallel" : false
+}
