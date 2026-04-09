@@ -17,6 +17,7 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
 SKIP_BUILD=false
+BUILD_WEB=false
 BUILD_TYPE="Release"
 PORT=8000
 ARCH="native"
@@ -39,6 +40,10 @@ while [[ $# -gt 0 ]]; do
     --arch)
         ARCH="$2"
         shift 2
+        ;;
+    --build-web)
+        BUILD_WEB=true
+        shift
         ;;
     *)
         echo "Unknown argument: $1"
@@ -70,12 +75,20 @@ if [[ -z "${SO}" ]]; then
 fi
 echo "→ Using bindings: ${SO}"
 
-# ── Step 3: Install Python deps (if requirements.txt present) ─────────────────
-REQUIREMENTS="${PROJECT_ROOT}/server/requirements.txt"
-if [[ -f "${REQUIREMENTS}" ]]; then
-    echo "→ Checking Python dependencies…"
-    pip install -q -r "${REQUIREMENTS}"
+# ── Step 2b: Build SvelteKit frontend (optional) ─────────────────────────────
+if $BUILD_WEB; then
+    echo "→ Building SvelteKit frontend…"
+    WEB_DIR="${PROJECT_ROOT}/web"
+    (cd "${WEB_DIR}" && npm install && npm run build)
+    # Copy build output where FastAPI expects it.
+    mkdir -p "${PROJECT_ROOT}/server/static_web"
+    cp -r "${WEB_DIR}/build/." "${PROJECT_ROOT}/server/static_web/"
+    echo "→ Frontend built and copied to server/static_web/"
 fi
+
+# ── Step 3: Sync Python dependencies via uv ───────────────────────────────────
+echo "→ Syncing Python dependencies…"
+uv sync --frozen
 
 # ── Step 4: Start FastAPI server ──────────────────────────────────────────────
 echo ""
@@ -85,9 +98,9 @@ echo "  API docs:  http://localhost:${PORT}/docs"
 echo "  Press Ctrl-C to stop."
 echo ""
 
-cd "${PROJECT_ROOT}/server"
+cd "${PROJECT_ROOT}"
 PYTHONPATH="${BINDINGS_DIR}:${PYTHONPATH:-}" \
-    uvicorn main:app \
+    uv run uvicorn server.main:app \
     --host 0.0.0.0 \
     --port "${PORT}" \
     --reload \

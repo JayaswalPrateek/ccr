@@ -119,6 +119,7 @@ class SimulationRequest(BaseModel):
     deterministic_quantile: bool = True
     log_overflow_warnings:  bool = False
     rng_seed:               int  = 42
+    note:                   Optional[str] = None
 
 
 # ── Result types ─────────────────────────────────────────────────────────────

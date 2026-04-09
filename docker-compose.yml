@@ -1,0 +1,48 @@
+services:
+
+  # ── PostgreSQL + TimescaleDB ─────────────────────────────────────────────────
+  db:
+    image: timescale/timescaledb:latest-pg16
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER:     ccr
+      POSTGRES_PASSWORD: ccr
+      POSTGRES_DB:       ccr
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test:     ["CMD-SHELL", "pg_isready -U ccr"]
+      interval: 5s
+      timeout:  5s
+      retries:  12
+
+  # ── CCR API server ───────────────────────────────────────────────────────────
+  server:
+    build:
+      # Build context is the repo root so pyproject.toml / uv.lock are accessible.
+      context:    .
+      dockerfile: server/Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment:
+      # Override DATABASE_URL so the container reaches db by service hostname.
+      DATABASE_URL: "postgresql+asyncpg://ccr:ccr@db:5432/ccr"
+    volumes:
+      # Mount source code for hot-reload; keep the .venv in the image layer.
+      - ./server:/app/server
+      # Pre-built SvelteKit frontend (run `cd web && npm run build` first).
+      - ./web/build:/app/server/static_web
+    command: >
+      uvicorn server.main:app
+      --host 0.0.0.0
+      --port 8000
+      --reload
+      --reload-dir /app/server
+
+volumes:
+  pgdata: {}

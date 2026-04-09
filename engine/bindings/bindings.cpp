@@ -223,6 +223,7 @@ PYBIND11_MODULE(_ccr_engine, m) {
                 std::optional<ProgressCallback> cb;
                 if (callback_fn.has_value()) {
                     cb = [fn = *callback_fn](int t, int total, double pfe) {
+                        py::gil_scoped_acquire acquire;
                         fn(t, total, pfe);
                     };
                 }

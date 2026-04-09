@@ -1,0 +1,27 @@
+[simulation]
+default_num_paths       = 10000
+default_num_timesteps   = 12
+default_horizon_years   = 1.0
+default_mode            = "STANDARD"   # REGULATORY | STANDARD | APPROX_FAST
+default_grid_type       = "MONTHLY"    # MONTHLY | WEEKLY | DAILY | PARSIMONIOUS
+default_mu              = 0.02         # drift (overridden by SOFR if FRED key set)
+default_sigma           = 0.20         # vol (overridden by 30-day rolling vol)
+default_hazard_rate     = 0.02
+default_recovery_rate   = 0.40
+
+[scheduler]
+market_refresh_interval_minutes = 15
+auto_rerun_interval_hours       = 1
+
+[alerts]
+email_on_margin_call = true
+margin_call_email_subject = "[CCR] Margin Call"
+
+[cache]
+market_params_ttl_seconds  = 60
+simulation_result_ttl_seconds = 3600
+
+[export]
+pdf_page_size = "A4"
+csv_delimiter = ","
+max_margin_calls_in_pdf = 10

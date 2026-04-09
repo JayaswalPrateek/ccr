@@ -1,0 +1,93 @@
+<script lang="ts">
+  import { createEventDispatcher } from 'svelte';
+  import type { StressScenarioRequest } from '$lib/types';
+
+  const dispatch = createEventDispatcher<{
+    apply: StressScenarioRequest;
+    clear: void;
+  }>();
+
+  export let value: StressScenarioRequest | null = null;
+
+  let vol_shock:           number = 0;
+  let fx_shock:            number = 0;
+  let equity_shock:        number = 0;
+  let interest_rate_shock: number = 0;
+  let credit_spread_shock: number = 0;
+  let hazard_rate_shock:   number = 0;
+  let jump_amplitude:      number = 0;
+  let label:               string = 'stress';
+
+  function fmt(v: number, decimals = 2) {
+    return v >= 0 ? `+${v.toFixed(decimals)}` : v.toFixed(decimals);
+  }
+
+  function apply() {
+    dispatch('apply', {
+      vol_shock, fx_shock, equity_shock,
+      interest_rate_shock, credit_spread_shock,
+      hazard_rate_shock, jump_amplitude, label,
+    });
+  }
+
+  function clear() {
+    vol_shock = fx_shock = equity_shock = interest_rate_shock
+              = credit_spread_shock = hazard_rate_shock = jump_amplitude = 0;
+    dispatch('clear');
+  }
+
+  const sliders: Array<{
+    key: keyof StressScenarioRequest;
+    label: string;
+    min: number; max: number; step: number;
+    get: () => number;
+    set: (v: number) => void;
+  }> = [
+    { key: 'vol_shock',           label: 'Vol Shock',           min: -0.5, max: 2.0,  step: 0.05, get: () => vol_shock,           set: (v) => (vol_shock = v) },
+    { key: 'fx_shock',            label: 'FX Shock',            min: -0.3, max: 0.3,  step: 0.01, get: () => fx_shock,            set: (v) => (fx_shock = v) },
+    { key: 'equity_shock',        label: 'Equity Shock',        min: -0.5, max: 0.5,  step: 0.01, get: () => equity_shock,        set: (v) => (equity_shock = v) },
+    { key: 'interest_rate_shock', label: 'Rate Shock',          min: -0.05,max: 0.05, step: 0.001,get: () => interest_rate_shock, set: (v) => (interest_rate_shock = v) },
+    { key: 'credit_spread_shock', label: 'Credit Spread Shock', min: -0.02,max: 0.10, step: 0.001,get: () => credit_spread_shock, set: (v) => (credit_spread_shock = v) },
+    { key: 'hazard_rate_shock',   label: 'Hazard Rate Shock',   min: -0.05,max: 0.30, step: 0.005,get: () => hazard_rate_shock,   set: (v) => (hazard_rate_shock = v) },
+    { key: 'jump_amplitude',      label: 'Jump Amplitude',      min:  0,   max: 0.50, step: 0.01, get: () => jump_amplitude,      set: (v) => (jump_amplitude = v) },
+  ];
+</script>
+
+<div class="stress-form">
+  <div class="form-group" style="margin-bottom:1rem">
+    <label class="form-label" for="stress-label">Scenario Label</label>
+    <input id="stress-label" class="form-input" bind:value={label} placeholder="stress" />
+  </div>
+
+  {#each sliders as s}
+    <div class="slider-row">
+      <div class="slider-header">
+        <span class="form-label">{s.label}</span>
+        <span class="slider-val" class:nonzero={s.get() !== 0}>{fmt(s.get())}</span>
+      </div>
+      <input
+        type="range"
+        min={s.min} max={s.max} step={s.step}
+        value={s.get()}
+        on:input={(e) => s.set(parseFloat((e.target as HTMLInputElement).value))}
+      />
+      <div class="slider-range">
+        <span>{s.min}</span><span>{s.max}</span>
+      </div>
+    </div>
+  {/each}
+
+  <div style="display:flex;gap:.5rem;margin-top:1rem">
+    <button class="btn btn-primary" on:click={apply}>Apply Stress</button>
+    <button class="btn btn-ghost"   on:click={clear}>Reset</button>
+  </div>
+</div>
+
+<style>
+  .stress-form { display: flex; flex-direction: column; gap: .5rem; }
+  .slider-row  { padding: .4rem 0; }
+  .slider-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: .2rem; }
+  .slider-val { font-size: .8rem; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .slider-val.nonzero { color: var(--amber); }
+  .slider-range { display: flex; justify-content: space-between; font-size: .65rem; color: var(--muted); margin-top: .1rem; }
+</style>

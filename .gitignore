@@ -13,7 +13,7 @@ __pycache__/
 server/bindings/*.so
 server/bindings/*.dylib
 
-# Python virtual environments
+# Python virtual environments (uv creates .venv at project root)
 .venv/
 venv/
 env/
@@ -27,6 +27,18 @@ env/
 
 # macOS
 .DS_Store
+
+# Secrets
+.env
+
+# Server logs (keep the directory, ignore the files)
+server/logs/*.log
+server/logs/*.log.*
+
+# SvelteKit build output
+web/build/
+web/.svelte-kit/
+web/node_modules/
 
 # Claude / local tooling artifacts
 .claude/
