@@ -19,8 +19,8 @@
     if (PUBLIC_ROUTES.includes(path)) { loading = false; return; }
 
     const ok = await initAuth();
+    loading = false;  // always clear spinner regardless of auth result
     if (!ok) { goto('/login'); return; }
-    loading = false;
 
     // Initialise the API token on every page load.
     const token = $authToken;
@@ -30,6 +30,16 @@
     if (lightMode) document.body.classList.add('light');
     thresholds = { ...$alertThresholds };
   });
+
+  // Handle post-login SPA navigation: when the user logs in from /login and
+  // goto('/dashboard') fires, the layout onMount already ran (with loading=false
+  // and no auth check). Re-initialize theme/thresholds if $currentUser is now set.
+  $: if ($currentUser && !loading) {
+    if (typeof localStorage !== 'undefined') {
+      lightMode = localStorage.getItem('ccr_light_mode') === 'true';
+      document.body.classList.toggle('light', lightMode);
+    }
+  }
 
   function toggleTheme() {
     lightMode = !lightMode;

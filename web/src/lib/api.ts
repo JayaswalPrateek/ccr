@@ -412,7 +412,7 @@ class ApiClient {
 
   // ── Health ───────────────────────────────────────────────────────────────────
 
-  async health(): Promise<{ status: string; engine: { arch: string; simd_width: number } }> {
+  async health(): Promise<{ status: string; engine: { arch: string; simd_lanes: number } }> {
     return this.request('GET', '/api/v1/health');
   }
 }

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -16,6 +16,7 @@ from server.auth.rbac import Role, get_current_user, require_role
 from server.auth.security import create_access_token, hash_password, verify_password
 from server.core.database import get_db
 from server.models.db_models import User
+from server.notifications.audit import log_event
 
 auth_router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
@@ -43,11 +44,11 @@ class RegisterRequest(BaseModel):
     username: str
     email:    str
     password: str
-    role:     str = Role.AUDITOR
+    role:     Role = Role.AUDITOR
 
 
 class UpdateUserRequest(BaseModel):
-    role:      Optional[str]  = None
+    role:      Optional[Role] = None
     is_active: Optional[bool] = None
 
 
@@ -55,8 +56,9 @@ class UpdateUserRequest(BaseModel):
 
 @auth_router.post("/login", response_model=TokenResponse)
 async def login(
-    form: OAuth2PasswordRequestForm = Depends(),
-    db:   AsyncSession              = Depends(get_db),
+    form:    OAuth2PasswordRequestForm = Depends(),
+    request: Request                   = None,
+    db:      AsyncSession              = Depends(get_db),
 ) -> TokenResponse:
     result = await db.execute(select(User).where(User.username == form.username))
     user = result.scalar_one_or_none()
@@ -66,6 +68,10 @@ async def login(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account disabled")
 
     user.last_login = datetime.now(timezone.utc)
+    ip = request.client.host if (request and request.client) else None
+    await log_event(db, action="login", user_id=user.id,
+                    resource_type="user", resource_id=user.id,
+                    detail={"username": user.username}, ip_address=ip)
     await db.commit()
 
     token = create_access_token({"sub": user.id, "role": user.role})
@@ -75,6 +81,7 @@ async def login(
 @auth_router.post("/register", response_model=UserOut, status_code=201)
 async def register(
     body:    RegisterRequest,
+    request: Request      = None,
     db:      AsyncSession = Depends(get_db),
     _caller: User         = Depends(require_role(Role.ADMIN)),
 ) -> UserOut:
@@ -88,6 +95,7 @@ async def register(
         field = "Username" if existing.username == body.username else "Email"
         raise HTTPException(status_code=409, detail=f"{field} already exists")
 
+    ip = request.client.host if (request and request.client) else None
     new_user = User(
         username  = body.username,
         email     = body.email,
@@ -96,6 +104,11 @@ async def register(
     )
     db.add(new_user)
     try:
+        await db.flush()  # get the new user's ID before logging
+        await log_event(db, action="register_user", user_id=_caller.id,
+                        resource_type="user", resource_id=new_user.id,
+                        detail={"username": body.username, "role": body.role},
+                        ip_address=ip)
         await db.commit()
     except IntegrityError:
         await db.rollback()

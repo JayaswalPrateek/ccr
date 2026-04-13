@@ -16,6 +16,12 @@ import os
 import subprocess
 import sys
 import traceback
+import warnings
+
+# Suppress urllib3 LibreSSL warning on macOS — LibreSSL is functionally
+# compatible for our use; the warning is cosmetic noise.
+warnings.filterwarnings("ignore", message=".*urllib3.*LibreSSL.*", category=Warning)
+warnings.filterwarnings("ignore", message=".*OpenSSL.*", module="urllib3")
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncGenerator

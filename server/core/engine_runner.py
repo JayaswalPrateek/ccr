@@ -50,5 +50,5 @@ def engine_info() -> dict:
     """Return static engine metadata (architecture, SIMD width)."""
     return {
         "arch":       _ccr.active_arch(),
-        "simd_width": _ccr.simd_width(),
+        "simd_lanes": _ccr.simd_width(),  # number of float64 SIMD lanes (e.g. 2 for ARM NEON float64x2)
     }

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -46,6 +46,17 @@ class CounterpartyIn(BaseModel):
     mpor_days:        int   = 10
 
 
+class CounterpartyUpdate(BaseModel):
+    external_id:      Optional[str]   = None
+    name:             str
+    credit_rating:    str   = "BBB"
+    hazard_rate:      float = 0.02
+    recovery_rate:    float = 0.40
+    collateral:       float = 0.0
+    margin_threshold: float = 0.0
+    mpor_days:        int   = 10
+
+
 class CounterpartyOut(CounterpartyIn):
     id:         str
     created_at: datetime
@@ -60,6 +71,14 @@ class CounterpartyDetailOut(CounterpartyOut):
 
 class PortfolioIn(BaseModel):
     external_id:     str
+    counterparty_id: str
+    collateral:      float = 0.0
+    net_value:       float = 0.0
+    auto_run:        bool  = False
+
+
+class PortfolioUpdate(BaseModel):
+    external_id:     Optional[str]  = None
     counterparty_id: str
     collateral:      float = 0.0
     net_value:       float = 0.0
@@ -127,15 +146,18 @@ async def list_counterparties(
 
 @entities_router.post("/counterparties", response_model=CounterpartyOut, status_code=201)
 async def create_counterparty(
-    body: CounterpartyIn,
-    db:   AsyncSession = Depends(get_db),
-    user: User         = Depends(require_role(Role.RISK_MANAGER, Role.ADMIN)),
+    body:    CounterpartyIn,
+    request: Request,
+    db:      AsyncSession = Depends(get_db),
+    user:    User         = Depends(require_role(Role.RISK_MANAGER, Role.ADMIN)),
 ) -> CounterpartyOut:
     cp = Counterparty(**body.model_dump(), created_by=user.id)
     db.add(cp)
+    await db.flush()  # assigns PK before logging
     await log_event(db, action="create_counterparty", user_id=user.id,
-                    resource_type="counterparty", resource_id=None,
-                    detail={"name": body.name, "external_id": body.external_id})
+                    resource_type="counterparty", resource_id=cp.id,
+                    detail={"name": body.name, "external_id": body.external_id},
+                    ip_address=request.client.host if request.client else None)
     await db.commit()
     await db.refresh(cp)
     return CounterpartyOut.model_validate(cp)
@@ -164,18 +186,20 @@ async def get_counterparty(
 
 @entities_router.put("/counterparties/{cp_id}", response_model=CounterpartyOut)
 async def update_counterparty(
-    cp_id: str,
-    body:  CounterpartyIn,
-    db:    AsyncSession = Depends(get_db),
-    user:  User         = Depends(require_role(Role.RISK_MANAGER, Role.ADMIN)),
+    cp_id:   str,
+    body:    CounterpartyUpdate,
+    request: Request,
+    db:      AsyncSession = Depends(get_db),
+    user:    User         = Depends(require_role(Role.RISK_MANAGER, Role.ADMIN)),
 ) -> CounterpartyOut:
     cp = await _get_or_404(db, Counterparty, cp_id)
-    for field, value in body.model_dump().items():
+    for field, value in body.model_dump(exclude_none=True).items():
         setattr(cp, field, value)
     cp.updated_at = datetime.now(timezone.utc)
     await log_event(db, action="update_counterparty", user_id=user.id,
                     resource_type="counterparty", resource_id=cp_id,
-                    detail={"name": body.name})
+                    detail={"name": body.name},
+                    ip_address=request.client.host if request.client else None)
     await db.commit()
     await db.refresh(cp)
     return CounterpartyOut.model_validate(cp)
@@ -183,23 +207,38 @@ async def update_counterparty(
 
 @entities_router.delete("/counterparties/{cp_id}", status_code=204)
 async def delete_counterparty(
-    cp_id: str,
-    db:    AsyncSession = Depends(get_db),
-    user:  User         = Depends(require_role(Role.RISK_MANAGER, Role.ADMIN)),
+    cp_id:   str,
+    cascade: bool    = Query(False, description="Cascade-delete all portfolios and derivatives"),
+    request: Request = None,
+    db:      AsyncSession = Depends(get_db),
+    user:    User         = Depends(require_role(Role.RISK_MANAGER, Role.ADMIN)),
 ) -> None:
     cp = await _get_or_404(db, Counterparty, cp_id)
     cp_name = cp.name
-    db.delete(cp)
+    ip = request.client.host if (request and request.client) else None
+
+    if cascade:
+        # Load and delete all derivatives, then portfolios, then the counterparty
+        port_result = await db.execute(select(Portfolio).where(Portfolio.counterparty_id == cp_id))
+        portfolios = port_result.scalars().all()
+        for port in portfolios:
+            deriv_result = await db.execute(select(Derivative).where(Derivative.portfolio_id == port.id))
+            for deriv in deriv_result.scalars().all():
+                await db.delete(deriv)
+            await db.delete(port)
+
+    await db.delete(cp)
     try:
         await log_event(db, action="delete_counterparty", user_id=user.id,
                         resource_type="counterparty", resource_id=cp_id,
-                        detail={"name": cp_name})
+                        detail={"name": cp_name, "cascade": cascade},
+                        ip_address=ip)
         await db.commit()
     except IntegrityError:
         await db.rollback()
         raise HTTPException(
             status_code=409,
-            detail="Cannot delete counterparty with existing portfolios or margin calls",
+            detail="Cannot delete counterparty with existing portfolios or margin calls. Use ?cascade=true to delete all.",
         )
 
 
@@ -220,15 +259,18 @@ async def list_portfolios(
 
 @entities_router.post("/portfolios", response_model=PortfolioOut, status_code=201)
 async def create_portfolio(
-    body: PortfolioIn,
-    db:   AsyncSession = Depends(get_db),
-    user: User         = Depends(require_role(Role.RISK_MANAGER, Role.ADMIN)),
+    body:    PortfolioIn,
+    request: Request,
+    db:      AsyncSession = Depends(get_db),
+    user:    User         = Depends(require_role(Role.RISK_MANAGER, Role.ADMIN)),
 ) -> PortfolioOut:
     portfolio = Portfolio(**body.model_dump())
     db.add(portfolio)
+    await db.flush()  # assigns PK before logging
     await log_event(db, action="create_portfolio", user_id=user.id,
-                    resource_type="portfolio", resource_id=None,
-                    detail={"external_id": body.external_id, "counterparty_id": body.counterparty_id})
+                    resource_type="portfolio", resource_id=portfolio.id,
+                    detail={"external_id": body.external_id, "counterparty_id": body.counterparty_id},
+                    ip_address=request.client.host if request.client else None)
     await db.commit()
     await db.refresh(portfolio)
     return PortfolioOut.model_validate(portfolio)
@@ -247,16 +289,18 @@ async def get_portfolio(
 @entities_router.put("/portfolios/{port_id}", response_model=PortfolioOut)
 async def update_portfolio(
     port_id: str,
-    body:    PortfolioIn,
+    body:    PortfolioUpdate,
+    request: Request,
     db:      AsyncSession = Depends(get_db),
     user:    User         = Depends(require_role(Role.RISK_MANAGER, Role.ADMIN)),
 ) -> PortfolioOut:
     p = await _get_or_404(db, Portfolio, port_id)
-    for field, value in body.model_dump().items():
+    for field, value in body.model_dump(exclude_none=True).items():
         setattr(p, field, value)
     p.updated_at = datetime.now(timezone.utc)
     await log_event(db, action="update_portfolio", user_id=user.id,
-                    resource_type="portfolio", resource_id=port_id, detail={})
+                    resource_type="portfolio", resource_id=port_id, detail={},
+                    ip_address=request.client.host if request.client else None)
     await db.commit()
     await db.refresh(p)
     return PortfolioOut.model_validate(p)
@@ -269,7 +313,7 @@ async def delete_portfolio(
     user:    User         = Depends(require_role(Role.RISK_MANAGER, Role.ADMIN)),
 ) -> None:
     p = await _get_or_404(db, Portfolio, port_id)
-    db.delete(p)
+    await db.delete(p)
     try:
         await log_event(db, action="delete_portfolio", user_id=user.id,
                         resource_type="portfolio", resource_id=port_id, detail={})
@@ -288,15 +332,18 @@ async def delete_portfolio(
 async def add_derivative(
     port_id: str,
     body:    DerivativeIn,
+    request: Request,
     db:      AsyncSession = Depends(get_db),
     user:    User         = Depends(require_role(Role.RISK_MANAGER, Role.ADMIN)),
 ) -> DerivativeOut:
     await _get_or_404(db, Portfolio, port_id)
     deriv = Derivative(**body.model_dump(), portfolio_id=port_id)
     db.add(deriv)
+    await db.flush()   # assigns PK before logging so resource_id is not null
     await log_event(db, action="create_derivative", user_id=user.id,
-                    resource_type="derivative", resource_id=None,
-                    detail={"portfolio_id": port_id, "type": body.deriv_type, "notional": body.notional})
+                    resource_type="derivative", resource_id=deriv.id,
+                    detail={"portfolio_id": port_id, "type": body.deriv_type, "notional": body.notional},
+                    ip_address=request.client.host if request.client else None)
     await db.commit()
     await db.refresh(deriv)
     return DerivativeOut.model_validate(deriv)
@@ -315,7 +362,7 @@ async def delete_derivative(
     deriv = result.scalar_one_or_none()
     if deriv is None:
         raise HTTPException(status_code=404, detail="Derivative not found")
-    db.delete(deriv)
+    await db.delete(deriv)
     try:
         await log_event(db, action="delete_derivative", user_id=user.id,
                         resource_type="derivative", resource_id=deriv_id,
