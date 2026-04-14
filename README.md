@@ -6,6 +6,60 @@ Monte Carlo simulation engine for OTC derivatives, computing Potential Future Ex
 
 ---
 
+## Screenshots
+
+![Dashboard](docs/img/dashboard.png)
+*Dashboard — live PFE/EPE charts, CVA metrics, concentration table, and API latency badge*
+
+![Simulate](docs/img/simulate.png)
+*Simulate page — Monte Carlo parameter form, real-time WebSocket progress, PFE chart with spike annotation*
+
+![Counterparties](docs/img/counterparties.png)
+*Counterparties — full CRUD with credit rating, hazard rate, collateral, and per-counterparty CVA history*
+
+![Margin Calls](docs/img/margin-calls.png)
+*Margin Calls — auto-detected on every simulation run, PENDING/ACKNOWLEDGED/SETTLED lifecycle*
+
+---
+
+## Capabilities
+
+**Simulation Engine (C++20)**
+- Monte Carlo PFE/EPE/CVA over IRS, CDS, FX, Equity, and Commodity derivatives
+- GBM path simulation with SoA layout and branch-free hot loop
+- Wrong-way risk (Cholesky correlation between exposure and default)
+- Jump-at-default (multiplicative shock at simulated counterparty default time)
+- Stress scenarios: vol shock, equity shock, interest rate shock, hazard rate shock
+- SIMD dispatch: AVX-512 / AVX2 / ARM NEON / scalar — zero runtime overhead
+- Deterministic reproducibility via Kahan CVA summation and fixed-seed PRNG
+
+**Server (FastAPI + Python)**
+- JWT authentication with three roles: ADMIN, RISK_MANAGER, AUDITOR
+- Full CRUD for counterparties, portfolios, and derivatives
+- Simulation history with comparison and PDF/CSV export (ReportLab)
+- Real market data: yfinance (equity/FX/commodity) + FRED API (risk-free rate)
+- Live tick stream via WebSocket (GBM walk seeded from yfinance, labeled as demo)
+- Margin call detection and email alerts (aiosmtplib)
+- Background scheduler: market refresh every 15 min, auto-rerun every hour
+- Append-only audit log (TimescaleDB hypertable)
+- Simulation presets (save/load parameter sets)
+- Query builder for ad-hoc risk metric queries
+
+**Frontend (SvelteKit + TypeScript)**
+- Dark financial terminal UI with Chart.js PFE/EPE/CVA charts
+- Real-time simulation progress via WebSocket
+- Unstable parameter warnings (low path count, extreme volatility)
+- Market data freeze toggle for simulation reproducibility
+- Historical comparison mode (side-by-side simulation runs)
+- Optimal collateral suggestion (margin × 1.10 buffer)
+- Explain-the-spike annotation on PFE chart peak
+- API latency badge in header
+- Light/dark theme toggle
+- Role-gated views (RoleGuard component)
+- Admin panel: user management, audit log viewer
+
+---
+
 ## Quick Start (5 commands)
 
 ```bash
@@ -26,7 +80,15 @@ cd web && npm install && npm run dev
 python scripts/seed_demo_data.py
 ```
 
-Default login: **admin / admin123** — change on first use.
+**Demo credentials:**
+
+| Username | Password | Role |
+|---|---|---|
+| `admin` | `admin123` | ADMIN — full access |
+| `risk` | `risk123` | RISK_MANAGER — simulate + CRUD |
+| `auditor` | `auditor123` | AUDITOR — read-only |
+
+**Demo data** (after seeding): 6 counterparties (Alpha Bank, Beta Capital, Gamma Hedge Fund, Delta Energy, Epsilon Insurance, Zeta Corp), 7 portfolios, 17 derivatives, 10 simulation runs, margin calls in all three lifecycle states.
 
 ---
 
@@ -147,6 +209,9 @@ All endpoints require `Authorization: Bearer <token>` except `/api/v1/auth/login
 | `POST` | `/api/v1/simulate/compare` | Any | Side-by-side run comparison |
 | `GET` | `/api/v1/simulate/{id}/export/pdf` | Any | Download PDF report |
 | `GET` | `/api/v1/simulate/{id}/export/csv` | Any | Download PFE/EPE CSV |
+| `GET` | `/api/v1/simulate/{id}/attribution` | Any | Notional-weighted CVA attribution |
+| `GET` | `/api/v1/analytics/concentration` | Any | Risk concentration ranking |
+| `GET` | `/api/v1/me/activity` | Any | Current user's recent actions |
 | `GET` | `/api/v1/counterparties` | Any | List counterparties |
 | `POST` | `/api/v1/counterparties` | RM / ADMIN | Create counterparty |
 | `GET` | `/api/v1/counterparties/{id}` | Any | Get with portfolios |
@@ -159,6 +224,7 @@ All endpoints require `Authorization: Bearer <token>` except `/api/v1/auth/login
 | `GET` | `/api/v1/margin-calls` | Any | List margin calls |
 | `PUT` | `/api/v1/margin-calls/{id}/acknowledge` | RM / ADMIN | Acknowledge |
 | `PUT` | `/api/v1/margin-calls/{id}/settle` | RM / ADMIN | Settle |
+| `POST` | `/api/v1/margin-calls/{id}/notify` | RM / ADMIN | Notify counterparty |
 | `GET` | `/api/v1/margin-calls/export/csv` | Any | Bulk CSV export |
 | `GET` | `/api/v1/market/prices` | Any | Current market params (60 s cache) |
 | `GET` | `/api/v1/market/prices/{symbol}/history` | Any | Price history |
@@ -253,7 +319,8 @@ ccr/
 │       ├── lib/             api.ts, ws-client.ts, state.ts, types.ts, auth.ts
 │       ├── components/      charts/ · forms/ · ui/
 │       └── routes/          dashboard · simulate · stress · margin-calls
-│                            counterparties · reports · admin · login
+│                            counterparties · reports · query · presets · admin · login
+├── docs/img/                README screenshots
 ├── config/                  defaults.toml, CMake modules
 ├── scripts/                 build_engine.sh, run_dev.sh, seed_demo_data.py
 ├── docker-compose.yml

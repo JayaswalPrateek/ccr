@@ -27,6 +27,7 @@ env/
 
 # macOS
 .DS_Store
+**/.DS_Store
 
 # Secrets
 .env
@@ -50,6 +51,9 @@ snoopy-moseying-meerkat.md
 *.png
 *.jpg
 *.jpeg
+# But keep docs/img for README screenshots
+!docs/img/*.png
+!docs/img/*.jpg
 .playwright-mcp/
 BUG_REPORT.md
 updated-mockup.html
