@@ -42,6 +42,7 @@ struct PathState {
     std::span<double> exposures;        ///< [T][M_padded]  — column-major
     std::span<double> pfe_profile;      ///< [T]
     std::span<double> epe_profile;      ///< [T]
+    std::span<double> default_times;    ///< [M] pre-sampled default times (empty if jump disabled)
     int K;          ///< Number of assets
     int M;          ///< Requested path count
     int M_padded;   ///< M rounded up to ActiveArch::WIDTH

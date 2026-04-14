@@ -163,7 +163,7 @@ async def delete_preset(
     user:      User         = Depends(require_role(Role.RISK_MANAGER, Role.ADMIN)),
 ) -> None:
     preset = await _get_owned_or_404(db, preset_id, user.id)
-    db.delete(preset)
+    await db.delete(preset)
     await log_event(db, action="delete_preset", user_id=user.id,
                     resource_type="sim_preset", resource_id=preset_id,
                     detail={"name": preset.name})

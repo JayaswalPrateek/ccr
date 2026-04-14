@@ -46,6 +46,7 @@ void apply_jump_at_default(
     int K, int M, int M_padded)
 {
     if (!jump_params.enabled || jump_params.jump_size == 0.0) return;
+    if (default_times.empty()) return;  // no pre-sampled default times available
 
     // TODO: vectorise; for now iterate over defaulted paths only.
     for (int m = 0; m < M; ++m) {

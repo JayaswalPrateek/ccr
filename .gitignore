@@ -45,3 +45,15 @@ web/node_modules/
 .remember/
 engine-plan.md
 snoopy-moseying-meerkat.md
+
+# Development screenshots and test artifacts
+*.png
+*.jpg
+*.jpeg
+.playwright-mcp/
+BUG_REPORT.md
+updated-mockup.html
+
+# Temporary test scripts
+/tmp/e2e_test.py
+/tmp/ui_test*.js

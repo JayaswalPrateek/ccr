@@ -155,6 +155,20 @@ RiskMetrics CcrEngine::run_single(
         jp.jump_size    = config.stress->jump_amplitude;
         jp.hazard_rate  = config.counterparty.hazard_rate;
         hook = std::make_unique<MultiplicativeJumpHook>(jp);
+
+        // Pre-sample default times τ ~ Exp(λ) using uniform scratch buffer.
+        // arena_->uniform_scratch and arena_->default_times are M-wide arrays
+        // allocated by arena_->allocate(..., /*need_jump=*/true).
+        rng.fill_uniform(std::span<double>{arena_->uniform_scratch,
+                                           static_cast<std::size_t>(M)});
+        auto tau_vec = sample_default_times(
+            std::span<const double>{arena_->uniform_scratch,
+                                    static_cast<std::size_t>(M)},
+            config.counterparty.hazard_rate,
+            params.horizon_years);
+        std::copy(tau_vec.begin(), tau_vec.end(), arena_->default_times);
+        // Rebuild PathState so state.default_times points to the filled buffer.
+        state = arena_->make_path_state(K, M, M_padded, T);
     }
 
     // 7. Simulate.

@@ -200,7 +200,8 @@ void PathSimulator::run_all_steps(PathState& state, Xoroshiro128aox& rng) noexce
         // 4. Optional jump hook (post-diffusion, cold path).
         if (jump_hook_) {
             jump_hook_->on_paths_complete(
-                state.spot_prices, {}, time_grid_.times(), K, state.M, M_padded);
+                state.spot_prices, state.default_times,
+                time_grid_.times(), K, state.M, M_padded);
         }
 
         // 5. Compute exposures E(t) = max(V(t), 0) and store column t.

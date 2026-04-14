@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -23,6 +23,7 @@ from server.models.db_models import (
     MarginCall,
     Portfolio,
     RiskMetric,
+    SimulationRun,
     User,
 )
 from server.notifications.alerts import send_margin_call_email
@@ -218,7 +219,22 @@ async def delete_counterparty(
     ip = request.client.host if (request and request.client) else None
 
     if cascade:
-        # Load and delete all derivatives, then portfolios, then the counterparty
+        # Nullify simulation_runs + risk_metrics (nullable FKs — just clear the pointer)
+        await db.execute(
+            update(SimulationRun)
+            .where(SimulationRun.counterparty_id == cp_id)
+            .values(counterparty_id=None)
+        )
+        await db.execute(
+            update(RiskMetric)
+            .where(RiskMetric.counterparty_id == cp_id)
+            .values(counterparty_id=None)
+        )
+        # Delete margin calls (non-nullable FK — must go before counterparty)
+        mc_result = await db.execute(select(MarginCall).where(MarginCall.counterparty_id == cp_id))
+        for mc in mc_result.scalars().all():
+            await db.delete(mc)
+        # Delete all derivatives, then portfolios
         port_result = await db.execute(select(Portfolio).where(Portfolio.counterparty_id == cp_id))
         portfolios = port_result.scalars().all()
         for port in portfolios:

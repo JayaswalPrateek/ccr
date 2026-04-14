@@ -115,6 +115,9 @@ struct CcrEngine::Arena {
 			.exposures = {exposures, (std::size_t)T * M_padded},
 			.pfe_profile = {pfe_profile, (std::size_t)T},
 			.epe_profile = {epe_profile, (std::size_t)T},
+			.default_times = default_times
+			    ? std::span<double>{default_times, (std::size_t)M}
+			    : std::span<double>{},
 			.K = K,
 			.M = M,
 			.M_padded = M_padded,
