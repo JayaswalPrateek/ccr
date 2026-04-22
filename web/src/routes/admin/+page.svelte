@@ -92,14 +92,14 @@
     {#if creating}
       <div style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:.75rem;margin-bottom:.75rem;background:var(--surface2)">
         <div class="form-row">
-          <div class="form-group"><label class="form-label">Username</label><input class="form-input" bind:value={newUser.username} /></div>
-          <div class="form-group"><label class="form-label">Email</label><input class="form-input" type="email" bind:value={newUser.email} /></div>
+          <div class="form-group"><label class="form-label" for="nu-username">Username</label><input id="nu-username" class="form-input" bind:value={newUser.username} /></div>
+          <div class="form-group"><label class="form-label" for="nu-email">Email</label><input id="nu-email" class="form-input" type="email" bind:value={newUser.email} /></div>
         </div>
         <div class="form-row">
-          <div class="form-group"><label class="form-label">Password</label><input class="form-input" type="password" bind:value={newUser.password} /></div>
+          <div class="form-group"><label class="form-label" for="nu-password">Password</label><input id="nu-password" class="form-input" type="password" bind:value={newUser.password} /></div>
           <div class="form-group">
-            <label class="form-label">Role</label>
-            <select class="form-select" bind:value={newUser.role}>
+            <label class="form-label" for="nu-role">Role</label>
+            <select id="nu-role" class="form-select" bind:value={newUser.role}>
               <option value="AUDITOR">Auditor</option>
               <option value="RISK_MANAGER">Risk Manager</option>
               <option value="ADMIN">Admin</option>

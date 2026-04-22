@@ -304,18 +304,18 @@
       {#if editError}<div class="alert alert-error" style="margin-bottom:.75rem">{editError}</div>{/if}
 
       <div class="form-group" style="margin-bottom:.5rem">
-        <label class="form-label" style="font-size:.75rem">Name *</label>
-        <input class="form-input" bind:value={editName} placeholder="e.g. Base Case — Acme Corp" maxlength="200" />
+        <label class="form-label" for="ep-name" style="font-size:.75rem">Name *</label>
+        <input id="ep-name" class="form-input" bind:value={editName} placeholder="e.g. Base Case — Acme Corp" maxlength="200" />
       </div>
 
       <div class="form-group" style="margin-bottom:.5rem">
-        <label class="form-label" style="font-size:.75rem">Description</label>
-        <textarea class="form-input" bind:value={editDesc} rows="2" placeholder="Optional context for this preset" style="resize:vertical;min-height:52px"></textarea>
+        <label class="form-label" for="ep-desc" style="font-size:.75rem">Description</label>
+        <textarea id="ep-desc" class="form-input" bind:value={editDesc} rows="2" placeholder="Optional context for this preset" style="resize:vertical;min-height:52px"></textarea>
       </div>
 
       <div class="form-group" style="margin-bottom:.5rem">
-        <label class="form-label" style="font-size:.75rem">Counterparty scope</label>
-        <select class="form-select" bind:value={editCpId}>
+        <label class="form-label" for="ep-cp" style="font-size:.75rem">Counterparty scope</label>
+        <select id="ep-cp" class="form-select" bind:value={editCpId}>
           <option value="">Global (all counterparties)</option>
           {#each counterparties as cp}
             <option value={cp.id}>{cp.name}</option>
@@ -329,11 +329,12 @@
       </div>
 
       <div class="form-group" style="margin-bottom:.5rem">
-        <label class="form-label" style="font-size:.75rem;display:flex;justify-content:space-between">
+        <label class="form-label" for="ep-params" style="font-size:.75rem;display:flex;justify-content:space-between">
           <span>Simulation Parameters (JSON) *</span>
           {#if !paramsValid}<span style="color:var(--red)">Invalid JSON</span>{/if}
         </label>
         <textarea
+          id="ep-params"
           class="form-input"
           bind:value={editParams}
           rows="8"
@@ -346,8 +347,9 @@
       </div>
 
       <div class="form-group" style="margin-bottom:.75rem">
-        <label class="form-label" style="font-size:.75rem">Stress Scenario (JSON, optional)</label>
+        <label class="form-label" for="ep-stress" style="font-size:.75rem">Stress Scenario (JSON, optional)</label>
         <textarea
+          id="ep-stress"
           class="form-input"
           bind:value={editStress}
           rows="4"

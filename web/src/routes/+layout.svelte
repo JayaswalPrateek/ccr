@@ -196,12 +196,12 @@
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.5rem;width:320px">
         <div style="font-weight:600;margin-bottom:.75rem">Alert Thresholds</div>
         <div class="form-group" style="margin-bottom:.5rem">
-          <label class="form-label" style="font-size:.75rem">CVA Breach Level</label>
-          <input class="form-input" type="number" bind:value={thresholds.cva} step="0.01" min="0" />
+          <label class="form-label" for="thresh-cva" style="font-size:.75rem">CVA Breach Level</label>
+          <input id="thresh-cva" class="form-input" type="number" bind:value={thresholds.cva} step="0.01" min="0" />
         </div>
         <div class="form-group" style="margin-bottom:.75rem">
-          <label class="form-label" style="font-size:.75rem">Margin Breach Level</label>
-          <input class="form-input" type="number" bind:value={thresholds.margin} step="1000" min="0" />
+          <label class="form-label" for="thresh-margin" style="font-size:.75rem">Margin Breach Level</label>
+          <input id="thresh-margin" class="form-input" type="number" bind:value={thresholds.margin} step="1000" min="0" />
         </div>
         <div style="display:flex;gap:.5rem;justify-content:flex-end">
           <button class="btn btn-ghost" on:click={() => showSettings = false}>Cancel</button>
