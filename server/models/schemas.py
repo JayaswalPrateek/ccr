@@ -9,7 +9,7 @@ from __future__ import annotations
 from enum import IntEnum
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 # ── Enumerations ────────────────────────────────────────────────────────────
@@ -46,9 +46,9 @@ class GridType(IntEnum):
 # ── Simulation parameters ────────────────────────────────────────────────────
 
 class SimParamsRequest(BaseModel):
-    num_paths:     int   = Field(10_000, gt=0)
-    num_timesteps: int   = Field(12,     gt=0)
-    num_assets:    int   = Field(1,      gt=0)
+    num_paths:     int   = Field(10_000, gt=0, le=500_000)
+    num_timesteps: int   = Field(12,     gt=0, le=1_000)
+    num_assets:    int   = Field(1,      gt=0, le=100)
     mu:            float = Field(0.02)
     sigma:         float = Field(0.20,   gt=0)
     rho_wwr:       float = Field(0.0,    ge=-1.0, le=1.0)
@@ -120,6 +120,12 @@ class SimulationRequest(BaseModel):
     log_overflow_warnings:  bool = False
     rng_seed:               int  = 42
     note:                   Optional[str] = None
+
+    @model_validator(mode="after")
+    def require_derivatives(self) -> "SimulationRequest":
+        if not self.portfolio.derivatives:
+            raise ValueError("Portfolio must contain at least one derivative to run a simulation")
+        return self
 
 
 # ── Result types ─────────────────────────────────────────────────────────────

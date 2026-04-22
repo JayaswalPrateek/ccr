@@ -1,5 +1,5 @@
 /**
- * WebSocket clients for real-time simulation progress and live price ticks.
+ * WebSocket client for real-time simulation progress.
  */
 
 // ── SimulationWS ──────────────────────────────────────────────────────────────
@@ -106,76 +106,3 @@ export class SimulationWS {
   }
 }
 
-// ── PriceTickWS ───────────────────────────────────────────────────────────────
-
-const RECONNECT_DELAY_MS = 2000;
-const MAX_RECONNECTS = 10;
-
-export class PriceTickWS {
-  private ws: WebSocket | null = null;
-  private token = '';
-  private cb: ((symbol: string, price: number, ts: number) => void) | null = null;
-  private reconnects = 0;
-  private stopped = false;
-  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-
-  connect(
-    token: string,
-    onTick: (symbol: string, price: number, ts: number) => void,
-  ): void {
-    this.token = token;
-    this.cb = onTick;
-    this.stopped = false;
-    this.reconnects = 0;
-    this._open();
-  }
-
-  private _open(): void {
-    if (this.stopped) return;
-    const url = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/prices`;
-    this.ws = new WebSocket(url);
-
-    this.ws.onopen = () => {
-      this.reconnects = 0;
-      this.ws!.send(JSON.stringify({ token: this.token }));
-    };
-
-    this.ws.onmessage = (ev) => {
-      try {
-        const msg = JSON.parse(ev.data);
-        if (msg.type === 'tick') {
-          const ts: number = msg.ts ?? Date.now() / 1000;
-          for (const [sym, price] of Object.entries(msg.data as Record<string, number>)) {
-            this.cb?.(sym, price, ts);
-          }
-        }
-      } catch {}
-    };
-
-    this.ws.onerror = () => this._reconnect();
-    this.ws.onclose = (ev) => {
-      if (!this.stopped && ev.code !== 4001) this._reconnect();
-    };
-  }
-
-  private _reconnect(): void {
-    if (this.stopped || this.reconnects >= MAX_RECONNECTS) return;
-    this.reconnects++;
-    this.reconnectTimer = setTimeout(
-      () => this._open(),
-      RECONNECT_DELAY_MS * Math.min(this.reconnects, 4),
-    );
-  }
-
-  disconnect(): void {
-    this.stopped = true;
-    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
-    if (this.ws) {
-      this.ws.onmessage = null;
-      this.ws.onerror = null;
-      this.ws.onclose = null;
-      this.ws.close();
-      this.ws = null;
-    }
-  }
-}

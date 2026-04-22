@@ -40,10 +40,6 @@ export const latestMetrics  = writable<SimulationResponse | null>(null);
 export const simProgress    = writable<number>(0);       // 0–100
 export const simRunning     = writable<boolean>(false);
 
-// ── Market / live data ────────────────────────────────────────────────────────
-
-export const livePrices     = writable<Record<string, number>>({});
-
 // ── Derived ───────────────────────────────────────────────────────────────────
 
 /**

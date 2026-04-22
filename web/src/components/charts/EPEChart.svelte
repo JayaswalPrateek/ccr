@@ -59,7 +59,7 @@
           },
           y: {
             grid:   { color: 'rgba(45,49,66,.7)' },
-            ticks:  { color: '#64748b', font: { size: 10 } },
+            ticks:  { color: '#64748b', font: { size: 10 }, callback: (v: unknown) => `${Number(v).toFixed(0)}` },
             title:  { display: true, text: 'EPE', color: '#64748b', font: { size: 10 } },
           },
         },
@@ -84,6 +84,6 @@
 </div>
 {#if cva > 0}
   <div style="text-align:center;font-size:.72rem;color:var(--muted);margin-top:.25rem;">
-    CVA = <strong style="color:var(--green)">{cva.toFixed(4)}</strong>
+    CVA = <strong style="color:var(--green)">{cva.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong>
   </div>
 {/if}

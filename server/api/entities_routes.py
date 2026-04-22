@@ -138,10 +138,14 @@ CounterpartyDetailOut.model_rebuild()
 
 @entities_router.get("/counterparties", response_model=List[CounterpartyOut])
 async def list_counterparties(
-    db:   AsyncSession = Depends(get_db),
-    _u:   User         = Depends(get_current_user),
+    limit:  int           = Query(200, ge=1, le=500),
+    offset: int           = Query(0, ge=0),
+    db:     AsyncSession  = Depends(get_db),
+    _u:     User          = Depends(get_current_user),
 ) -> List[CounterpartyOut]:
-    result = await db.execute(select(Counterparty).order_by(Counterparty.name))
+    result = await db.execute(
+        select(Counterparty).order_by(Counterparty.name).limit(limit).offset(offset)
+    )
     return [CounterpartyOut.model_validate(c) for c in result.scalars().all()]
 
 
@@ -154,7 +158,14 @@ async def create_counterparty(
 ) -> CounterpartyOut:
     cp = Counterparty(**body.model_dump(), created_by=user.id)
     db.add(cp)
-    await db.flush()  # assigns PK before logging
+    try:
+        await db.flush()  # assigns PK before logging; raises IntegrityError on dup
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail=f"Counterparty with external_id '{body.external_id}' already exists",
+        )
     await log_event(db, action="create_counterparty", user_id=user.id,
                     resource_type="counterparty", resource_id=cp.id,
                     detail={"name": body.name, "external_id": body.external_id},
@@ -263,13 +274,15 @@ async def delete_counterparty(
 @entities_router.get("/portfolios", response_model=List[PortfolioOut])
 async def list_portfolios(
     counterparty_id: Optional[str] = Query(None),
+    limit:           int            = Query(200, ge=1, le=500),
+    offset:          int            = Query(0, ge=0),
     db:              AsyncSession   = Depends(get_db),
     _u:              User           = Depends(get_current_user),
 ) -> List[PortfolioOut]:
     stmt = select(Portfolio)
     if counterparty_id:
         stmt = stmt.where(Portfolio.counterparty_id == counterparty_id)
-    result = await db.execute(stmt.order_by(Portfolio.created_at))
+    result = await db.execute(stmt.order_by(Portfolio.created_at).limit(limit).offset(offset))
     return [PortfolioOut.model_validate(p) for p in result.scalars().all()]
 
 
@@ -282,7 +295,17 @@ async def create_portfolio(
 ) -> PortfolioOut:
     portfolio = Portfolio(**body.model_dump())
     db.add(portfolio)
-    await db.flush()  # assigns PK before logging
+    try:
+        await db.flush()  # assigns PK before logging; raises IntegrityError on dup ext_id or bad FK
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Could not create portfolio: external_id '{body.external_id}' may already exist, "
+                f"or counterparty_id '{body.counterparty_id}' does not exist"
+            ),
+        )
     await log_event(db, action="create_portfolio", user_id=user.id,
                     resource_type="portfolio", resource_id=portfolio.id,
                     detail={"external_id": body.external_id, "counterparty_id": body.counterparty_id},
@@ -395,6 +418,8 @@ async def delete_derivative(
 async def list_margin_calls(
     mc_status:       Optional[str] = Query(None, alias="status"),
     counterparty_id: Optional[str] = Query(None),
+    limit:           int           = Query(50, ge=1, le=500),
+    offset:          int           = Query(0, ge=0),
     db:              AsyncSession   = Depends(get_db),
     _u:              User           = Depends(get_current_user),
 ) -> List[MarginCallOut]:
@@ -403,7 +428,7 @@ async def list_margin_calls(
         stmt = stmt.where(MarginCall.status == mc_status.upper())
     if counterparty_id:
         stmt = stmt.where(MarginCall.counterparty_id == counterparty_id)
-    result = await db.execute(stmt.order_by(MarginCall.issued_at.desc()))
+    result = await db.execute(stmt.order_by(MarginCall.issued_at.desc()).limit(limit).offset(offset))
     return [MarginCallOut.model_validate(mc) for mc in result.scalars().all()]
 
 
@@ -414,6 +439,11 @@ async def acknowledge_margin_call(
     user:  User         = Depends(require_role(Role.RISK_MANAGER, Role.ADMIN)),
 ) -> MarginCallOut:
     mc = await _get_or_404(db, MarginCall, mc_id)
+    if mc.status != "PENDING":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot acknowledge margin call in '{mc.status}' state — only PENDING calls may be acknowledged",
+        )
     mc.status = "ACKNOWLEDGED"
     mc.acknowledged_at = datetime.now(timezone.utc)
     await log_event(db, action="acknowledge_margin_call", user_id=user.id,
@@ -431,6 +461,11 @@ async def settle_margin_call(
     user:  User         = Depends(require_role(Role.RISK_MANAGER, Role.ADMIN)),
 ) -> MarginCallOut:
     mc = await _get_or_404(db, MarginCall, mc_id)
+    if mc.status not in ("PENDING", "ACKNOWLEDGED"):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot settle margin call in '{mc.status}' state — only PENDING or ACKNOWLEDGED calls may be settled",
+        )
     mc.status = "SETTLED"
     mc.settled_at = datetime.now(timezone.utc)
     await log_event(db, action="settle_margin_call", user_id=user.id,
@@ -552,9 +587,18 @@ async def get_counterparty_summary(
 
 # ── Utility ───────────────────────────────────────────────────────────────────
 
+_TABLE_LABELS: Dict[str, str] = {
+    "counterparties": "Counterparty",
+    "portfolios":     "Portfolio",
+    "derivatives":    "Derivative",
+    "margin_calls":   "Margin call",
+}
+
+
 async def _get_or_404(db: AsyncSession, model: Any, obj_id: str) -> Any:
     result = await db.execute(select(model).where(model.id == obj_id))
     obj = result.scalar_one_or_none()
     if obj is None:
-        raise HTTPException(status_code=404, detail=f"{model.__tablename__} not found")
+        label = _TABLE_LABELS.get(model.__tablename__, model.__tablename__.replace("_", " ").capitalize())
+        raise HTTPException(status_code=404, detail=f"{label} not found")
     return obj

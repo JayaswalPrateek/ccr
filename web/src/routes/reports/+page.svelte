@@ -141,7 +141,7 @@
               <span class="badge badge-blue" style="font-size:.65rem">{run.run_id?.slice(0,8) ?? '—'}</span>
             </div>
             <div style="display:flex;gap:1rem;margin-top:.2rem;font-size:.75rem;color:var(--muted)">
-              <span>CVA: {run.cva.toFixed(5)}</span>
+              <span>CVA: {run.cva.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
               <span>Margin: {run.margin_required.toLocaleString(undefined,{maximumFractionDigits:0})}</span>
             </div>
             <div style="margin-top:.3rem">
@@ -166,11 +166,11 @@
           <div class="grid-3" style="margin-top:.75rem">
             <div>
               <div style="font-size:.7rem;color:var(--muted)">CVA</div>
-              <div style="font-weight:700">{selectedRun.cva.toFixed(5)}</div>
+              <div style="font-weight:700">{selectedRun.cva.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
             </div>
             <div>
               <div style="font-size:.7rem;color:var(--muted)">WWR-CVA</div>
-              <div style="font-weight:700">{selectedRun.wwr_cva.toFixed(5)}</div>
+              <div style="font-weight:700">{selectedRun.wwr_cva.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
             </div>
             <div>
               <div style="font-size:.7rem;color:var(--muted)">Margin</div>
@@ -234,8 +234,8 @@
               <tr>
                 <td><span class="badge badge-blue">{r.run_id?.slice(0,8) ?? '—'}</span></td>
                 <td class="text-muted">{new Date(r.time).toLocaleString()}</td>
-                <td class="text-right">{r.cva.toFixed(5)}</td>
-                <td class="text-right">{r.wwr_cva.toFixed(5)}</td>
+                <td class="text-right">{r.cva.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                <td class="text-right">{r.wwr_cva.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
                 <td class="text-right">{r.margin_required.toLocaleString(undefined,{maximumFractionDigits:0})}</td>
                 <td><span class="badge {r.is_stressed ? 'badge-amber' : 'badge-blue'}">{r.is_stressed ? 'Stressed' : 'Base'}</span></td>
               </tr>
@@ -247,7 +247,7 @@
         <div style="margin-top:.5rem;font-size:.75rem;color:var(--muted)">
           CVA delta (last vs first):
           <span style="color:{compareResults[compareResults.length-1].cva > compareResults[0].cva ? 'var(--red)' : 'var(--green)'}">
-            {(compareResults[compareResults.length-1].cva - compareResults[0].cva > 0 ? '+' : '')}{(compareResults[compareResults.length-1].cva - compareResults[0].cva).toFixed(5)}
+            {(compareResults[compareResults.length-1].cva - compareResults[0].cva > 0 ? '+' : '')}{(compareResults[compareResults.length-1].cva - compareResults[0].cva).toLocaleString(undefined, { maximumFractionDigits: 2 })}
           </span>
         </div>
       {/if}

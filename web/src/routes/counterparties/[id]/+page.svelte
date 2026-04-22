@@ -160,7 +160,7 @@
   {#if summary}
     <div class="grid-4" style="margin-bottom:1rem">
       <div class="card"><div style="font-size:.7rem;color:var(--muted)">Total Runs</div><div style="font-size:1.25rem;font-weight:700">{summary.total_runs}</div></div>
-      <div class="card"><div style="font-size:.7rem;color:var(--muted)">Avg CVA</div><div style="font-size:1.25rem;font-weight:700">{summary.avg_cva.toFixed(4)}</div></div>
+      <div class="card"><div style="font-size:.7rem;color:var(--muted)">Avg CVA</div><div style="font-size:1.25rem;font-weight:700">{summary.avg_cva.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div></div>
       <div class="card"><div style="font-size:.7rem;color:var(--muted)">Total Margin Called</div><div style="font-size:1.25rem;font-weight:700">{summary.total_margin_called.toLocaleString(undefined,{maximumFractionDigits:0})}</div></div>
       <div class="card"><div style="font-size:.7rem;color:var(--muted)">Pending Calls</div><div style="font-size:1.25rem;font-weight:700;color:{summary.pending_calls>0?'var(--amber)':'var(--text)'}">{summary.pending_calls}</div></div>
     </div>
@@ -234,7 +234,7 @@
             {#each history.slice(0,8) as h}
               <tr>
                 <td class="text-muted">{new Date(h.time).toLocaleDateString()}</td>
-                <td>{h.cva.toFixed(5)}</td>
+                <td>{h.cva.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
                 <td>{h.margin_required.toLocaleString(undefined,{maximumFractionDigits:0})}</td>
                 <td><span class="badge {h.is_stressed ? 'badge-amber' : 'badge-blue'}">{h.is_stressed ? 'Stress' : 'Base'}</span></td>
               </tr>

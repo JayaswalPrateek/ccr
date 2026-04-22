@@ -410,6 +410,13 @@ class ApiClient {
     return this.request('GET', `/api/v1/query/vol-cva?${qs}`);
   }
 
+  async queryDateBounds(): Promise<{
+    risk_metrics: { min: string | null; max: string | null };
+    margin_calls: { min: string | null; max: string | null };
+  }> {
+    return this.request('GET', '/api/v1/query/date-bounds');
+  }
+
   // ── Health ───────────────────────────────────────────────────────────────────
 
   async health(): Promise<{ status: string; engine: { arch: string; simd_lanes: number } }> {

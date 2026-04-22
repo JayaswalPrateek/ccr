@@ -217,8 +217,8 @@
   <div class="sim-right">
     {#if result?.success}
       <div class="grid-4 mb-4">
-        <MetricCard label="CVA"      value={result.base.cva.toFixed(5)} />
-        <MetricCard label="WWR-CVA"  value={result.base.wwr_cva.toFixed(5)} />
+        <MetricCard label="CVA"      value={result.base.cva.toLocaleString(undefined, { maximumFractionDigits: 2 })} />
+        <MetricCard label="WWR-CVA"  value={result.base.wwr_cva.toLocaleString(undefined, { maximumFractionDigits: 2 })} />
         <MetricCard label="Margin"   value={result.base.margin_required.toLocaleString(undefined,{maximumFractionDigits:0})} breached={result.base.margin_required > 0} />
         <MetricCard label="Compute"  value={(result.base.compute_time_us/1000).toFixed(1)} unit="ms" subtitle={result.base.arch_used} />
       </div>

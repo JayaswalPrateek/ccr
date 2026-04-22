@@ -177,9 +177,6 @@
       {#if $lastApiLatencyMs !== null}
         <span class="badge badge-muted" style="font-variant-numeric:tabular-nums;margin-right:.5rem">API {$lastApiLatencyMs}ms</span>
       {/if}
-      <span style="font-size:.75rem;color:var(--muted)">
-        Demo Ticks — not real market data
-      </span>
       <button class="btn btn-ghost btn-sm" style="font-size:.75rem" on:click={toggleTheme} title="Toggle light/dark mode">
         {lightMode ? '◑' : '●'}
       </button>

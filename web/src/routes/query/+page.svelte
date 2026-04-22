@@ -66,6 +66,23 @@
   let counterparties: Counterparty[] = [];
   let loadingCPs = true;
 
+  // Date bounds fetched from the server — used to clamp date-picker inputs
+  let dateBounds: {
+    risk_metrics: { min: string | null; max: string | null };
+    margin_calls: { min: string | null; max: string | null };
+  } | null = null;
+
+  // Derives min/max for the active template's underlying table
+  $: activeBounds = selectedTemplate === 'margin-activity'
+    ? dateBounds?.margin_calls
+    : dateBounds?.risk_metrics;
+
+  // Localise ISO string (UTC) → datetime-local value (YYYY-MM-DDTHH:mm)
+  function isoToLocal(iso: string | null | undefined): string {
+    if (!iso) return '';
+    return new Date(iso).toISOString().slice(0, 16);
+  }
+
   // Shared filters
   let filterCP     = '';
   let filterFrom   = '';
@@ -133,13 +150,13 @@
 
   onMount(async () => {
     loadSavedQueries();
-    try {
-      counterparties = await api.listCounterparties();
-    } catch (_) {
-      // non-fatal
-    } finally {
-      loadingCPs = false;
-    }
+    const [cps, bounds] = await Promise.allSettled([
+      api.listCounterparties(),
+      api.queryDateBounds(),
+    ]);
+    if (cps.status === 'fulfilled')    counterparties = cps.value;
+    if (bounds.status === 'fulfilled') dateBounds     = bounds.value;
+    loadingCPs = false;
   });
 
   function selectTemplate(id: TemplateId) {
@@ -304,15 +321,15 @@
     if (t === 'risk-timeline')    return [
       { key: 'time',              label: 'Time',        fmt: (v) => new Date(v).toLocaleString() },
       { key: 'counterparty_name', label: 'Counterparty' },
-      { key: 'cva',               label: 'CVA',         fmt: (v) => (+v).toFixed(6) },
-      { key: 'wwr_cva',           label: 'WWR-CVA',     fmt: (v) => (+v).toFixed(6) },
+      { key: 'cva',               label: 'CVA',         fmt: (v) => (+v).toLocaleString(undefined, { maximumFractionDigits: 2 }) },
+      { key: 'wwr_cva',           label: 'WWR-CVA',     fmt: (v) => (+v).toLocaleString(undefined, { maximumFractionDigits: 2 }) },
       { key: 'margin_required',   label: 'Margin',      fmt: (v) => (+v).toLocaleString(undefined,{maximumFractionDigits:0}) },
       { key: 'is_stressed',       label: 'Stressed',    fmt: (v) => v ? 'Yes' : 'No' },
     ];
     if (t === 'exposure-ranking') return [
       { key: 'counterparty_name', label: 'Counterparty' },
-      { key: 'cva',               label: 'CVA',         fmt: (v) => (+v).toFixed(6) },
-      { key: 'wwr_cva',           label: 'WWR-CVA',     fmt: (v) => (+v).toFixed(6) },
+      { key: 'cva',               label: 'CVA',         fmt: (v) => (+v).toLocaleString(undefined, { maximumFractionDigits: 2 }) },
+      { key: 'wwr_cva',           label: 'WWR-CVA',     fmt: (v) => (+v).toLocaleString(undefined, { maximumFractionDigits: 2 }) },
       { key: 'margin_required',   label: 'Margin',      fmt: (v) => (+v).toLocaleString(undefined,{maximumFractionDigits:0}) },
       { key: 'run_count',         label: 'Runs' },
       { key: 'last_run_time',     label: 'Last Run',    fmt: (v) => new Date(v).toLocaleDateString() },
@@ -320,8 +337,8 @@
     if (t === 'pfe-peaks')        return [
       { key: 'time',              label: 'Time',        fmt: (v) => new Date(v).toLocaleString() },
       { key: 'counterparty_name', label: 'Counterparty' },
-      { key: 'peak_pfe',          label: 'Peak PFE',    fmt: (v) => (+v).toFixed(5) },
-      { key: 'cva',               label: 'CVA',         fmt: (v) => (+v).toFixed(5) },
+      { key: 'peak_pfe',          label: 'Peak PFE',    fmt: (v) => (+v).toLocaleString(undefined, { maximumFractionDigits: 0 }) },
+      { key: 'cva',               label: 'CVA',         fmt: (v) => (+v).toLocaleString(undefined, { maximumFractionDigits: 2 }) },
     ];
     if (t === 'margin-activity')  return [
       { key: 'issued_at',         label: 'Date',        fmt: (v) => new Date(v).toLocaleString() },
@@ -334,8 +351,8 @@
       { key: 'time',              label: 'Time',        fmt: (v) => new Date(v).toLocaleString() },
       { key: 'sigma',             label: 'σ (Vol)',     fmt: (v) => v != null ? (+v).toFixed(4) : '—' },
       { key: 'num_paths',         label: 'Paths' },
-      { key: 'cva',               label: 'CVA',         fmt: (v) => (+v).toFixed(6) },
-      { key: 'wwr_cva',           label: 'WWR-CVA',     fmt: (v) => (+v).toFixed(6) },
+      { key: 'cva',               label: 'CVA',         fmt: (v) => (+v).toLocaleString(undefined, { maximumFractionDigits: 2 }) },
+      { key: 'wwr_cva',           label: 'WWR-CVA',     fmt: (v) => (+v).toLocaleString(undefined, { maximumFractionDigits: 2 }) },
     ];
     return [];
   }
@@ -433,13 +450,26 @@
         {/if}
 
         <!-- Date range -->
+        {#if activeBounds?.min && activeBounds?.max}
+          <div style="font-size:.68rem;color:var(--muted);margin-bottom:.4rem;line-height:1.4">
+            Data: {new Date(activeBounds.min).toLocaleDateString()} – {new Date(activeBounds.max).toLocaleDateString()}
+          </div>
+        {/if}
         <div class="form-group" style="margin-bottom:.5rem">
           <label class="form-label" style="font-size:.72rem">From</label>
-          <input class="form-input" type="datetime-local" bind:value={filterFrom} style="font-size:.78rem" />
+          <input
+            class="form-input" type="datetime-local" bind:value={filterFrom} style="font-size:.78rem"
+            min={isoToLocal(activeBounds?.min)}
+            max={filterTo || isoToLocal(activeBounds?.max)}
+          />
         </div>
         <div class="form-group" style="margin-bottom:.5rem">
           <label class="form-label" style="font-size:.72rem">To</label>
-          <input class="form-input" type="datetime-local" bind:value={filterTo} style="font-size:.78rem" />
+          <input
+            class="form-input" type="datetime-local" bind:value={filterTo} style="font-size:.78rem"
+            min={filterFrom || isoToLocal(activeBounds?.min)}
+            max={isoToLocal(activeBounds?.max)}
+          />
         </div>
 
         <!-- Template-specific filters -->

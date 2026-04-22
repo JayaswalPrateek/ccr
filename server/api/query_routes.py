@@ -22,6 +22,16 @@ from server.models.db_models import (
     User,
 )
 
+# ── Date-bounds response ──────────────────────────────────────────────────────
+
+class _Bounds(BaseModel):
+    min: Optional[datetime]
+    max: Optional[datetime]
+
+class DateBoundsResponse(BaseModel):
+    risk_metrics: _Bounds
+    margin_calls: _Bounds
+
 logger = logging.getLogger(__name__)
 query_router = APIRouter(prefix="/api/v1/query", tags=["query"])
 
@@ -91,6 +101,32 @@ def _parse_dt(s: Optional[str]) -> Optional[datetime]:
         return datetime.fromisoformat(s.replace("Z", "+00:00"))
     except ValueError:
         return None
+
+
+# ── Date bounds ──────────────────────────────────────────────────────────────
+
+@query_router.get("/date-bounds", response_model=DateBoundsResponse)
+async def get_date_bounds(
+    db: AsyncSession = Depends(get_db),
+    _u: User         = Depends(get_current_user),
+) -> DateBoundsResponse:
+    """Return min/max timestamps for risk metrics and margin calls.
+    Used by the query builder to constrain date-picker inputs.
+    """
+    rm_result = await db.execute(
+        select(func.min(RiskMetric.time), func.max(RiskMetric.time))
+    )
+    rm_row = rm_result.one()
+
+    mc_result = await db.execute(
+        select(func.min(MarginCall.issued_at), func.max(MarginCall.issued_at))
+    )
+    mc_row = mc_result.one()
+
+    return DateBoundsResponse(
+        risk_metrics=_Bounds(min=rm_row[0], max=rm_row[1]),
+        margin_calls=_Bounds(min=mc_row[0], max=mc_row[1]),
+    )
 
 
 # ── Template 1: Risk Timeline ─────────────────────────────────────────────────

@@ -215,6 +215,7 @@ async def _persist_metrics(
 async def simulate_history(
     counterparty_id: Optional[str] = Query(None),
     limit:           int            = Query(50, ge=1, le=200),
+    offset:          int            = Query(0, ge=0),
     db:              AsyncSession   = Depends(get_db),
     _u:              User           = Depends(get_current_user),
 ) -> List[SimulationHistoryItem]:
@@ -224,6 +225,7 @@ async def simulate_history(
         .outerjoin(SimulationRun, RiskMetric.simulation_run_id == SimulationRun.id)
         .order_by(RiskMetric.time.desc())
         .limit(limit)
+        .offset(offset)
     )
     if counterparty_id:
         stmt = stmt.where(RiskMetric.counterparty_id == counterparty_id)

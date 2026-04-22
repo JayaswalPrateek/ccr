@@ -118,7 +118,14 @@
     }
   }
 
+  let submitError = '';
+
   function submit() {
+    if (portfolio.derivatives.length === 0) {
+      submitError = 'Add at least one derivative before running a simulation.';
+      return;
+    }
+    submitError = '';
     dispatch('submit', {
       sim_params:             simParams,
       counterparty,
@@ -287,9 +294,13 @@
     </div>
 
     {#if portfolio.derivatives.length === 0}
-      <div style="font-size:.8rem;color:var(--muted);padding:.5rem 0">
-        No derivatives — click "Add" to create one.
+      <div style="font-size:.8rem;color:var(--amber);padding:.5rem 0">
+        No derivatives — click "+ Add" to create one before running.
       </div>
+    {/if}
+
+    {#if submitError}
+      <div class="alert alert-error" style="margin-top:.5rem;padding:.4rem .75rem;font-size:.8rem">{submitError}</div>
     {/if}
 
     {#each portfolio.derivatives as d, i}

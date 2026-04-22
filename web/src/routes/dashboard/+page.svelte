@@ -1,12 +1,10 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount } from 'svelte';
   import { api } from '$lib/api';
-  import { authToken, currentUser, latestMetrics, livePrices, marginCalls, pendingMarginCallCount } from '$lib/state';
-  import { PriceTickWS } from '$lib/ws-client';
+  import { latestMetrics, marginCalls, pendingMarginCallCount } from '$lib/state';
   import MetricCard from '$components/ui/MetricCard.svelte';
   import PFEChart from '$components/charts/PFEChart.svelte';
   import EPEChart from '$components/charts/EPEChart.svelte';
-  import LivePriceChart from '$components/charts/LivePriceChart.svelte';
   import CVABarChart from '$components/charts/CVABarChart.svelte';
   import { get } from 'svelte/store';
   import type { AuditLogItem, ConcentrationItem, SimulationHistoryItem } from '$lib/types';
@@ -14,13 +12,11 @@
   let history:       SimulationHistoryItem[] = [];
   let activityFeed:  AuditLogItem[]          = [];
   let concentration: ConcentrationItem[]     = [];
+  let cpNameMap:     Record<string, string>  = {};
   let errorMsg       = '';
   let loading        = true;
-  let tickWS: PriceTickWS | null = null;
   let autoRunning = false;
   let autoRunResults: any[] = [];
-
-  const PRICE_SYMBOLS = ['SPY', 'AAPL', 'MSFT', 'EURUSD=X', 'GC=F'];
 
   onMount(async () => {
     try {
@@ -28,9 +24,12 @@
         api.getSimHistory({ limit: 20 }),
         api.listMarginCalls({ limit: 50 }).then((mc) => marginCalls.set(mc)),
       ]);
-      // Non-blocking: activity feed and concentration — don't block the main load
+      // Non-blocking: activity feed, concentration, and counterparty name map
       api.getMyActivity({ limit: 10 }).then((a) => { activityFeed = a; }).catch(() => {});
       api.getConcentration(10).then((c) => { concentration = c; }).catch(() => {});
+      api.listCounterparties().then((cps) => {
+        cpNameMap = Object.fromEntries(cps.map((cp) => [cp.id, cp.name]));
+      }).catch(() => {});
 
       // Set latestMetrics from most recent base run if no in-session result.
       if (!get(latestMetrics) && history.length > 0) {
@@ -63,18 +62,7 @@
     } finally {
       loading = false;
     }
-
-    // Start live price feed.
-    const token = get(authToken);
-    if (token) {
-      tickWS = new PriceTickWS();
-      tickWS.connect(token, (sym, price) => {
-        livePrices.update((prev) => ({ ...prev, [sym]: price }));
-      });
-    }
   });
-
-  onDestroy(() => tickWS?.disconnect());
 
   async function runAutoSims() {
     autoRunning = true;
@@ -154,12 +142,12 @@
   <div class="grid-4" style="margin-bottom:1rem">
     <MetricCard
       label="CVA"
-      value={base ? base.cva.toFixed(4) : '—'}
+      value={base ? base.cva.toLocaleString(undefined, { maximumFractionDigits: 2 }) : '—'}
       breached={!!base && base.cva > 0.05}
     />
     <MetricCard
       label="WWR-CVA"
-      value={base ? base.wwr_cva.toFixed(4) : '—'}
+      value={base ? base.wwr_cva.toLocaleString(undefined, { maximumFractionDigits: 2 }) : '—'}
       subtitle="Wrong-way risk adjusted"
     />
     <MetricCard
@@ -189,13 +177,33 @@
     </div>
     <div class="card">
       <div class="card-header">
-        <span class="card-title">Live Prices</span>
-        <span class="badge badge-muted">Demo Ticks</span>
+        <span class="card-title">Top Risk</span>
+        <span class="badge badge-muted">by CVA · latest run</span>
       </div>
-      {#each PRICE_SYMBOLS.slice(0, 3) as sym}
-        <LivePriceChart symbol={sym} height={60} />
-        <hr class="divider" style="margin:.4rem 0" />
-      {/each}
+      {#if concentration.length === 0}
+        <div style="color:var(--muted);font-size:.8rem;padding:.5rem 0">No simulation data yet.</div>
+      {:else}
+        <div style="display:flex;flex-direction:column;gap:.5rem">
+          {#each concentration.slice(0, 5) as item, i}
+            <div style="display:flex;align-items:center;gap:.5rem">
+              <span style="color:var(--muted);font-size:.72rem;width:1rem;flex-shrink:0">{i + 1}</span>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:.82rem;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+                  {item.counterparty_name ?? item.counterparty_id.slice(0, 8)}
+                </div>
+                <div style="font-size:.7rem;color:var(--muted)">{new Date(item.last_run_time).toLocaleDateString()}</div>
+              </div>
+              <div style="text-align:right;flex-shrink:0">
+                <div style="font-size:.82rem;font-weight:600;color:{item.cva > 0.05 ? 'var(--red)' : 'var(--green)'}">
+                  {item.cva.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                </div>
+                <div style="font-size:.68rem;color:var(--muted)">CVA</div>
+              </div>
+            </div>
+          {/each}
+        </div>
+        <a href="/counterparties" class="btn btn-ghost btn-sm w-full" style="margin-top:.75rem;font-size:.74rem">View all counterparties</a>
+      {/if}
     </div>
   </div>
 
@@ -264,7 +272,7 @@
                     </span>
                   </td>
                   <td class="text-right">{mc.amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                  <td class="text-muted">{mc.counterparty_id.slice(0,8)}…</td>
+                  <td class="text-muted">{cpNameMap[mc.counterparty_id] ?? mc.counterparty_id.slice(0,8) + '…'}</td>
                   <td class="text-muted">{new Date(mc.issued_at).toLocaleDateString()}</td>
                 </tr>
               {/each}
@@ -286,7 +294,7 @@
             {#each history.filter((h) => !h.is_stressed).slice(0, 6) as item}
               <tr>
                 <td class="text-muted">{new Date(item.time).toLocaleDateString()}</td>
-                <td>{item.cva.toFixed(4)}</td>
+                <td>{item.cva.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
                 <td>{item.margin_required.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
                 <td><span class="badge badge-blue">Base</span></td>
               </tr>
@@ -325,7 +333,7 @@
                 <td style="color:var(--muted)">{i + 1}</td>
                 <td style="font-weight:500">{item.counterparty_name ?? item.counterparty_id.slice(0,8)}</td>
                 <td class="text-right" style="color:{item.cva > 0.05 ? 'var(--red)' : 'var(--text)'}">
-                  {item.cva.toFixed(5)}
+                  {item.cva.toLocaleString(undefined, { maximumFractionDigits: 2 })}
                 </td>
                 <td class="text-right">{item.margin_required.toLocaleString(undefined,{maximumFractionDigits:0})}</td>
                 <td class="text-muted">{new Date(item.last_run_time).toLocaleDateString()}</td>

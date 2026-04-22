@@ -94,7 +94,7 @@
 {#if spikeIndex >= 0 && pfeBase.length > 1}
   <div style="margin-top:.5rem;padding:.5rem .75rem;background:var(--surface2);border-left:3px solid var(--red);border-radius:var(--radius-sm);font-size:.76rem">
     <span style="color:var(--red);font-weight:600">Peak PFE:</span>
-    <span style="color:var(--text)"> {spikeValue.toFixed(4)} at t={spikeTime.toFixed(2)}yr</span>
+    <span style="color:var(--text)"> {spikeValue.toLocaleString(undefined, { maximumFractionDigits: 0 })} at t={spikeTime.toFixed(2)}yr</span>
     <div style="color:var(--muted);margin-top:.2rem">
       {#if isStressed}
         Spike driven by stress scenario — volatility shock amplifies tail exposure at this horizon.
