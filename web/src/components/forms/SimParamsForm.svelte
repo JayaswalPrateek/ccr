@@ -55,7 +55,27 @@
   };
 
   let portfolio: PortfolioRequest = {
-    id: 'PORT-001', counterparty_id: 'CP-001', derivatives: [], collateral: 0, net_value: 0,
+    id: 'PORT-001', counterparty_id: 'CP-001', collateral: 0, net_value: 0,
+    derivatives: [
+      {
+        id: 'DERIV-1',
+        type: DerivativeType.IRS,
+        notional: 10_000_000,
+        maturity_years: 5,
+        underlying_price: 0.05,
+        strike: 0.05,
+        cash_flow_freq: 2,
+      },
+      {
+        id: 'DERIV-2',
+        type: DerivativeType.CDS,
+        notional: 5_000_000,
+        maturity_years: 3,
+        underlying_price: 0.02,
+        strike: 0.02,
+        cash_flow_freq: 4,
+      },
+    ],
   };
 
   let enableWwr       = false;
@@ -82,10 +102,11 @@
 
   // ── Derivative helpers ────────────────────────────────────────────────────
   function addDerivative() {
+    const nextId = Math.max(0, ...portfolio.derivatives.map((d) => parseInt(d.id.replace('DERIV-', '')) || 0)) + 1;
     portfolio.derivatives = [
       ...portfolio.derivatives,
       {
-        id: `DERIV-${portfolio.derivatives.length + 1}`,
+        id: `DERIV-${nextId}`,
         type: DerivativeType.IRS,
         notional: 1_000_000,
         maturity_years: 5,

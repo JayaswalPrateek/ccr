@@ -553,11 +553,19 @@
       <div class="alert alert-error">{queryError}</div>
 
     {:else if rows.length === 0 && !running}
-      <div class="card" style="padding:2rem;text-align:center;color:var(--muted)">
+      <div class="card" style="padding:2.5rem;text-align:center">
         {#if meta}
-          No data matched your filters. Try widening the date range or removing filters.
+          <div style="font-size:1.5rem;margin-bottom:.75rem;opacity:.35">∅</div>
+          <div style="font-size:.95rem;font-weight:600;color:var(--text);margin-bottom:.4rem">No results found</div>
+          <div style="font-size:.8rem;color:var(--muted);max-width:320px;margin:0 auto;line-height:1.6">
+            Your query ran successfully but matched 0 rows. Try widening the date range, removing the counterparty filter, or lowering the Min CVA threshold.
+          </div>
+          <button class="btn btn-ghost btn-sm" style="margin-top:1rem" on:click={() => { filterFrom=''; filterTo=''; filterCP=''; filterMinCva=0; filterStatus=''; }}>
+            Clear all filters
+          </button>
         {:else}
-          Configure filters on the left and click <strong style="color:var(--text)">Run Query</strong>.
+          <div style="font-size:.95rem;font-weight:600;color:var(--text);margin-bottom:.4rem">Ready to run</div>
+          <div style="font-size:.8rem;color:var(--muted)">Configure filters on the left and click <strong style="color:var(--text)">Run Query</strong>.</div>
         {/if}
       </div>
 
