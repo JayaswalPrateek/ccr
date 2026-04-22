@@ -51,6 +51,24 @@
       try {
         const cp = await api.getCounterparty(cpId);
         loadedPresetName = cp.name;
+
+        // Map DB deriv_type string → DerivativeType enum int
+        const derivTypeMap: Record<string, number> = {
+          IRS: 0, CDS: 1, FX: 2, EQUITY: 3, COMMODITY: 4,
+        };
+
+        // Load derivatives from the counterparty's first portfolio (if any)
+        const firstPortfolio = cp.portfolios?.[0];
+        const dbDerivatives = (firstPortfolio?.derivatives ?? []).map((d, i) => ({
+          id: `DERIV-${i + 1}`,
+          type: derivTypeMap[d.deriv_type] ?? 0,
+          notional: d.notional,
+          maturity_years: d.maturity_years,
+          underlying_price: d.underlying_price,
+          strike: d.strike,
+          cash_flow_freq: d.cash_flow_freq,
+        }));
+
         initialSimParams = {
           ...(initialSimParams ?? {}),
           counterparty_id: cp.id,
@@ -59,6 +77,7 @@
           counterparty_recovery_rate: cp.recovery_rate,
           counterparty_collateral: cp.collateral,
           counterparty_mpor_days: cp.mpor_days,
+          ...(dbDerivatives.length > 0 ? { initial_derivatives: dbDerivatives } : {}),
         };
       } catch (_) {}
     }

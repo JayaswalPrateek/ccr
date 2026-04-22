@@ -33,6 +33,10 @@
       if (initialSimParams.counterparty_collateral != null) counterparty.collateral    = initialSimParams.counterparty_collateral as number;
       if (initialSimParams.counterparty_mpor_days != null) counterparty.mpor_days     = initialSimParams.counterparty_mpor_days as number;
       counterparty = { ...counterparty };
+      // Load derivatives from the DB portfolio (overrides form defaults when navigating from a counterparty)
+      if (Array.isArray(initialSimParams.initial_derivatives) && (initialSimParams.initial_derivatives as unknown[]).length > 0) {
+        portfolio = { ...portfolio, derivatives: initialSimParams.initial_derivatives as DerivativeSpecRequest[] };
+      }
     }
     function onKeyDown(e: KeyboardEvent) {
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); submit(); }
