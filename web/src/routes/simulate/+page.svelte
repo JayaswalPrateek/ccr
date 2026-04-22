@@ -12,6 +12,7 @@
   import AttributionChart from '$components/charts/AttributionChart.svelte';
   import MetricCard from '$components/ui/MetricCard.svelte';
   import type { AttributionItem, SimulationRequest, SimulationResponse } from '$lib/types';
+  import { fmtNum } from '$lib/fmt';
 
   let result:            SimulationResponse | null = null;
   let error              = '';
@@ -236,9 +237,9 @@
   <div class="sim-right">
     {#if result?.success}
       <div class="grid-4 mb-4">
-        <MetricCard label="CVA"      value={result.base.cva.toLocaleString(undefined, { maximumFractionDigits: 2 })} />
-        <MetricCard label="WWR-CVA"  value={result.base.wwr_cva.toLocaleString(undefined, { maximumFractionDigits: 2 })} />
-        <MetricCard label="Margin"   value={result.base.margin_required.toLocaleString(undefined,{maximumFractionDigits:0})} breached={result.base.margin_required > 0} />
+        <MetricCard label="CVA"      value={fmtNum(result.base.cva)} />
+        <MetricCard label="WWR-CVA"  value={fmtNum(result.base.wwr_cva)} />
+        <MetricCard label="Margin"   value={fmtNum(result.base.margin_required, 0)} breached={result.base.margin_required > 0} />
         <MetricCard label="Compute"  value={(result.base.compute_time_us/1000).toFixed(1)} unit="ms" subtitle={result.base.arch_used} />
       </div>
 
@@ -296,10 +297,10 @@
           </div>
           <div>
             <div style="font-size:1.4rem;font-weight:700;color:var(--green)">
-              {suggestedCollateral.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              {fmtNum(suggestedCollateral, 0)}
             </div>
             <div style="font-size:.78rem;color:var(--muted);margin-top:.4rem">
-              Recommended collateral = margin required ({result.base.margin_required.toLocaleString(undefined, { maximumFractionDigits: 0 })}) × 1.10 buffer.
+              Recommended collateral = margin required ({fmtNum(result.base.margin_required, 0)}) × 1.10 buffer.
               Posting this amount provides a 10% cushion above the computed margin requirement to absorb intraday exposure moves.
             </div>
           </div>

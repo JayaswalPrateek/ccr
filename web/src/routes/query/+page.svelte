@@ -10,6 +10,7 @@
     RiskTimelineRow,
     VolCvaRow,
   } from '$lib/types';
+  import { fmtNum } from '$lib/fmt';
 
   // ── Template definitions ───────────────────────────────────────────────────
   type TemplateId = 'risk-timeline' | 'exposure-ranking' | 'pfe-peaks' | 'margin-activity' | 'vol-cva';
@@ -321,38 +322,38 @@
     if (t === 'risk-timeline')    return [
       { key: 'time',              label: 'Time',        fmt: (v) => new Date(v).toLocaleString() },
       { key: 'counterparty_name', label: 'Counterparty' },
-      { key: 'cva',               label: 'CVA',         fmt: (v) => (+v).toLocaleString(undefined, { maximumFractionDigits: 2 }) },
-      { key: 'wwr_cva',           label: 'WWR-CVA',     fmt: (v) => (+v).toLocaleString(undefined, { maximumFractionDigits: 2 }) },
-      { key: 'margin_required',   label: 'Margin',      fmt: (v) => (+v).toLocaleString(undefined,{maximumFractionDigits:0}) },
+      { key: 'cva',               label: 'CVA',         fmt: (v) => fmtNum(+v) },
+      { key: 'wwr_cva',           label: 'WWR-CVA',     fmt: (v) => fmtNum(+v) },
+      { key: 'margin_required',   label: 'Margin',      fmt: (v) => fmtNum(+v, 0) },
       { key: 'is_stressed',       label: 'Stressed',    fmt: (v) => v ? 'Yes' : 'No' },
     ];
     if (t === 'exposure-ranking') return [
       { key: 'counterparty_name', label: 'Counterparty' },
-      { key: 'cva',               label: 'CVA',         fmt: (v) => (+v).toLocaleString(undefined, { maximumFractionDigits: 2 }) },
-      { key: 'wwr_cva',           label: 'WWR-CVA',     fmt: (v) => (+v).toLocaleString(undefined, { maximumFractionDigits: 2 }) },
-      { key: 'margin_required',   label: 'Margin',      fmt: (v) => (+v).toLocaleString(undefined,{maximumFractionDigits:0}) },
+      { key: 'cva',               label: 'CVA',         fmt: (v) => fmtNum(+v) },
+      { key: 'wwr_cva',           label: 'WWR-CVA',     fmt: (v) => fmtNum(+v) },
+      { key: 'margin_required',   label: 'Margin',      fmt: (v) => fmtNum(+v, 0) },
       { key: 'run_count',         label: 'Runs' },
       { key: 'last_run_time',     label: 'Last Run',    fmt: (v) => new Date(v).toLocaleDateString() },
     ];
     if (t === 'pfe-peaks')        return [
       { key: 'time',              label: 'Time',        fmt: (v) => new Date(v).toLocaleString() },
       { key: 'counterparty_name', label: 'Counterparty' },
-      { key: 'peak_pfe',          label: 'Peak PFE',    fmt: (v) => (+v).toLocaleString(undefined, { maximumFractionDigits: 0 }) },
-      { key: 'cva',               label: 'CVA',         fmt: (v) => (+v).toLocaleString(undefined, { maximumFractionDigits: 2 }) },
+      { key: 'peak_pfe',          label: 'Peak PFE',    fmt: (v) => fmtNum(+v, 0) },
+      { key: 'cva',               label: 'CVA',         fmt: (v) => fmtNum(+v) },
     ];
     if (t === 'margin-activity')  return [
       { key: 'issued_at',         label: 'Date',        fmt: (v) => new Date(v).toLocaleString() },
       { key: 'counterparty_name', label: 'Counterparty' },
-      { key: 'amount',            label: 'Amount',      fmt: (v) => (+v).toLocaleString(undefined,{maximumFractionDigits:0}) },
-      { key: 'excess_exposure',   label: 'Excess Exp',  fmt: (v) => (+v).toLocaleString(undefined,{maximumFractionDigits:0}) },
+      { key: 'amount',            label: 'Amount',      fmt: (v) => fmtNum(+v, 0) },
+      { key: 'excess_exposure',   label: 'Excess Exp',  fmt: (v) => fmtNum(+v, 0) },
       { key: 'status',            label: 'Status' },
     ];
     if (t === 'vol-cva')          return [
       { key: 'time',              label: 'Time',        fmt: (v) => new Date(v).toLocaleString() },
       { key: 'sigma',             label: 'σ (Vol)',     fmt: (v) => v != null ? (+v).toFixed(4) : '—' },
       { key: 'num_paths',         label: 'Paths' },
-      { key: 'cva',               label: 'CVA',         fmt: (v) => (+v).toLocaleString(undefined, { maximumFractionDigits: 2 }) },
-      { key: 'wwr_cva',           label: 'WWR-CVA',     fmt: (v) => (+v).toLocaleString(undefined, { maximumFractionDigits: 2 }) },
+      { key: 'cva',               label: 'CVA',         fmt: (v) => fmtNum(+v) },
+      { key: 'wwr_cva',           label: 'WWR-CVA',     fmt: (v) => fmtNum(+v) },
     ];
     return [];
   }
@@ -593,7 +594,7 @@
           <div style="display:flex;flex-wrap:wrap;gap:1rem">
             <div>
               <div style="font-size:.7rem;color:var(--muted)">Total Amount</div>
-              <div style="font-weight:700;font-size:1.1rem">{(+(summary.total_amount ?? 0)).toLocaleString(undefined,{maximumFractionDigits:0})}</div>
+              <div style="font-weight:700;font-size:1.1rem">{fmtNum(+(summary.total_amount ?? 0), 0)}</div>
             </div>
             {#each Object.entries((summary.status_breakdown as Record<string,number>) ?? {}) as [s, n]}
               <div>

@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { api } from '$lib/api';
   import type { SimulationHistoryItem } from '$lib/types';
+  import { fmtNum } from '$lib/fmt';
 
   let history:  SimulationHistoryItem[] = [];
   let loading   = true;
@@ -141,8 +142,8 @@
               <span class="badge badge-blue" style="font-size:.65rem">{run.run_id?.slice(0,8) ?? '—'}</span>
             </div>
             <div style="display:flex;gap:1rem;margin-top:.2rem;font-size:.75rem;color:var(--muted)">
-              <span>CVA: {run.cva.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
-              <span>Margin: {run.margin_required.toLocaleString(undefined,{maximumFractionDigits:0})}</span>
+              <span>CVA: {fmtNum(run.cva)}</span>
+              <span>Margin: {fmtNum(run.margin_required, 0)}</span>
             </div>
             <div style="margin-top:.3rem">
               <a href="/simulate?rerun_id={run.run_id}" style="font-size:.68rem;color:var(--muted);text-decoration:underline">↩ re-run</a>
@@ -166,15 +167,15 @@
           <div class="grid-3" style="margin-top:.75rem">
             <div>
               <div style="font-size:.7rem;color:var(--muted)">CVA</div>
-              <div style="font-weight:700">{selectedRun.cva.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
+              <div style="font-weight:700">{fmtNum(selectedRun.cva)}</div>
             </div>
             <div>
               <div style="font-size:.7rem;color:var(--muted)">WWR-CVA</div>
-              <div style="font-weight:700">{selectedRun.wwr_cva.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
+              <div style="font-weight:700">{fmtNum(selectedRun.wwr_cva)}</div>
             </div>
             <div>
               <div style="font-size:.7rem;color:var(--muted)">Margin</div>
-              <div style="font-weight:700">{selectedRun.margin_required.toLocaleString(undefined,{maximumFractionDigits:0})}</div>
+              <div style="font-weight:700">{fmtNum(selectedRun.margin_required, 0)}</div>
             </div>
           </div>
         </div>
@@ -234,9 +235,9 @@
               <tr>
                 <td><span class="badge badge-blue">{r.run_id?.slice(0,8) ?? '—'}</span></td>
                 <td class="text-muted">{new Date(r.time).toLocaleString()}</td>
-                <td class="text-right">{r.cva.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
-                <td class="text-right">{r.wwr_cva.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
-                <td class="text-right">{r.margin_required.toLocaleString(undefined,{maximumFractionDigits:0})}</td>
+                <td class="text-right">{fmtNum(r.cva)}</td>
+                <td class="text-right">{fmtNum(r.wwr_cva)}</td>
+                <td class="text-right">{fmtNum(r.margin_required, 0)}</td>
                 <td><span class="badge {r.is_stressed ? 'badge-amber' : 'badge-blue'}">{r.is_stressed ? 'Stressed' : 'Base'}</span></td>
               </tr>
             {/each}
@@ -247,7 +248,7 @@
         <div style="margin-top:.5rem;font-size:.75rem;color:var(--muted)">
           CVA delta (last vs first):
           <span style="color:{compareResults[compareResults.length-1].cva > compareResults[0].cva ? 'var(--red)' : 'var(--green)'}">
-            {(compareResults[compareResults.length-1].cva - compareResults[0].cva > 0 ? '+' : '')}{(compareResults[compareResults.length-1].cva - compareResults[0].cva).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+            {(compareResults[compareResults.length-1].cva - compareResults[0].cva > 0 ? '+' : '')}{fmtNum(compareResults[compareResults.length-1].cva - compareResults[0].cva)}
           </span>
         </div>
       {/if}

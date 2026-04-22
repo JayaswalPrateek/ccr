@@ -8,6 +8,7 @@
   import CVABarChart from '$components/charts/CVABarChart.svelte';
   import { get } from 'svelte/store';
   import type { AuditLogItem, ConcentrationItem, SimulationHistoryItem } from '$lib/types';
+  import { fmtNum } from '$lib/fmt';
 
   let history:       SimulationHistoryItem[] = [];
   let activityFeed:  AuditLogItem[]          = [];
@@ -142,17 +143,17 @@
   <div class="grid-4" style="margin-bottom:1rem">
     <MetricCard
       label="CVA"
-      value={base ? base.cva.toLocaleString(undefined, { maximumFractionDigits: 2 }) : '—'}
+      value={base ? fmtNum(base.cva) : '—'}
       breached={!!base && base.cva > 0.05}
     />
     <MetricCard
       label="WWR-CVA"
-      value={base ? base.wwr_cva.toLocaleString(undefined, { maximumFractionDigits: 2 }) : '—'}
+      value={base ? fmtNum(base.wwr_cva) : '—'}
       subtitle="Wrong-way risk adjusted"
     />
     <MetricCard
       label="Margin Required"
-      value={base ? base.margin_required.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—'}
+      value={base ? fmtNum(base.margin_required, 0) : '—'}
       breached={!!base && base.margin_required > 0}
     />
     <MetricCard
@@ -195,7 +196,7 @@
               </div>
               <div style="text-align:right;flex-shrink:0">
                 <div style="font-size:.82rem;font-weight:600;color:{item.cva > 0.05 ? 'var(--red)' : 'var(--green)'}">
-                  {item.cva.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                  {fmtNum(item.cva)}
                 </div>
                 <div style="font-size:.68rem;color:var(--muted)">CVA</div>
               </div>
@@ -271,7 +272,7 @@
                       {mc.status}
                     </span>
                   </td>
-                  <td class="text-right">{mc.amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                  <td class="text-right">{fmtNum(mc.amount, 0)}</td>
                   <td class="text-muted">{cpNameMap[mc.counterparty_id] ?? mc.counterparty_id.slice(0,8) + '…'}</td>
                   <td class="text-muted">{new Date(mc.issued_at).toLocaleDateString()}</td>
                 </tr>
@@ -294,8 +295,8 @@
             {#each history.filter((h) => !h.is_stressed).slice(0, 6) as item}
               <tr>
                 <td class="text-muted">{new Date(item.time).toLocaleDateString()}</td>
-                <td>{item.cva.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
-                <td>{item.margin_required.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                <td>{fmtNum(item.cva)}</td>
+                <td>{fmtNum(item.margin_required, 0)}</td>
                 <td><span class="badge badge-blue">Base</span></td>
               </tr>
             {/each}
@@ -333,9 +334,9 @@
                 <td style="color:var(--muted)">{i + 1}</td>
                 <td style="font-weight:500">{item.counterparty_name ?? item.counterparty_id.slice(0,8)}</td>
                 <td class="text-right" style="color:{item.cva > 0.05 ? 'var(--red)' : 'var(--text)'}">
-                  {item.cva.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                  {fmtNum(item.cva)}
                 </td>
-                <td class="text-right">{item.margin_required.toLocaleString(undefined,{maximumFractionDigits:0})}</td>
+                <td class="text-right">{fmtNum(item.margin_required, 0)}</td>
                 <td class="text-muted">{new Date(item.last_run_time).toLocaleDateString()}</td>
               </tr>
             {/each}

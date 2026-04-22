@@ -4,6 +4,7 @@
   import { counterparties } from '$lib/state';
   import RoleGuard from '$components/ui/RoleGuard.svelte';
   import type { Counterparty } from '$lib/types';
+  import { fmtNum } from '$lib/fmt';
 
   let loading  = true;
   let error    = '';
@@ -141,7 +142,7 @@
               <td><span class="badge {ratingColors[cp.credit_rating] ?? 'badge-muted'}">{cp.credit_rating}</span></td>
               <td>{cp.hazard_rate.toFixed(4)}</td>
               <td>{(cp.recovery_rate * 100).toFixed(0)}%</td>
-              <td>{cp.collateral.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+              <td>{fmtNum(cp.collateral, 0)}</td>
               <td>{cp.mpor_days}d</td>
               <td>
                 {#if sparklines[cp.id]?.length > 1}

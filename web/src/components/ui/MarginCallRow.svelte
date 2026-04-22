@@ -2,6 +2,7 @@
   import { createEventDispatcher } from 'svelte';
   import RoleGuard from './RoleGuard.svelte';
   import type { MarginCall } from '$lib/types';
+  import { fmtNum } from '$lib/fmt';
 
   export let mc: MarginCall;
   export let selected: boolean = false;
@@ -26,8 +27,8 @@
   <td>{new Date(mc.issued_at).toLocaleString()}</td>
   <td style="color:{mc.status==='PENDING'&&ageD>5?'var(--amber)':'var(--muted)'}">
     {ageD}d{mc.status==='PENDING'&&ageD>5?' ⚠':''}</td>
-  <td class="text-right"><strong>{mc.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
-  <td class="text-right" style="color:var(--red)">{mc.excess_exposure.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+  <td class="text-right"><strong>{fmtNum(mc.amount)}</strong></td>
+  <td class="text-right" style="color:var(--red)">{fmtNum(mc.excess_exposure)}</td>
   <td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title={mc.reason}>{mc.reason}</td>
   <td>
     <RoleGuard roles={['ADMIN', 'RISK_MANAGER']}>

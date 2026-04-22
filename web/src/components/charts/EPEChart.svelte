@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { Chart, type ChartConfiguration } from 'chart.js/auto';
+  import { fmtNum } from '$lib/fmt';
 
   export let timeGrid:    number[] = [];
   export let epeBase:     number[] = [];
@@ -59,7 +60,7 @@
           },
           y: {
             grid:   { color: 'rgba(45,49,66,.7)' },
-            ticks:  { color: '#64748b', font: { size: 10 }, callback: (v: unknown) => `${Number(v).toFixed(0)}` },
+            ticks:  { color: '#64748b', font: { size: 10 }, callback: (v: unknown) => fmtNum(Number(v), 0) },
             title:  { display: true, text: 'EPE', color: '#64748b', font: { size: 10 } },
           },
         },
@@ -84,6 +85,6 @@
 </div>
 {#if cva > 0}
   <div style="text-align:center;font-size:.72rem;color:var(--muted);margin-top:.25rem;">
-    CVA = <strong style="color:var(--green)">{cva.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong>
+    CVA = <strong style="color:var(--green)">{fmtNum(cva)}</strong>
   </div>
 {/if}

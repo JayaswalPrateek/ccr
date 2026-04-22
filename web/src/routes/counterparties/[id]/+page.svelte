@@ -5,6 +5,7 @@
   import RoleGuard from '$components/ui/RoleGuard.svelte';
   import CVABarChart from '$components/charts/CVABarChart.svelte';
   import type { Counterparty, MarginCall, Portfolio, SimulationHistoryItem } from '$lib/types';
+  import { fmtNum } from '$lib/fmt';
 
   interface CpSummary { total_runs: number; avg_cva: number; latest_cva: number | null; total_margin_called: number; pending_calls: number; settled_calls: number; total_derivatives: number; }
 
@@ -153,15 +154,15 @@
   <div class="grid-4" style="margin-bottom:1rem">
     <div class="card"><div style="font-size:.72rem;color:var(--muted)">Hazard Rate</div><div style="font-size:1.25rem;font-weight:700">{cp.hazard_rate.toFixed(4)}</div></div>
     <div class="card"><div style="font-size:.72rem;color:var(--muted)">Recovery Rate</div><div style="font-size:1.25rem;font-weight:700">{(cp.recovery_rate*100).toFixed(0)}%</div></div>
-    <div class="card"><div style="font-size:.72rem;color:var(--muted)">Collateral</div><div style="font-size:1.25rem;font-weight:700">{cp.collateral.toLocaleString(undefined,{maximumFractionDigits:0})}</div></div>
+    <div class="card"><div style="font-size:.72rem;color:var(--muted)">Collateral</div><div style="font-size:1.25rem;font-weight:700">{fmtNum(cp.collateral, 0)}</div></div>
     <div class="card"><div style="font-size:.72rem;color:var(--muted)">MPOR</div><div style="font-size:1.25rem;font-weight:700">{cp.mpor_days}d</div></div>
   </div>
 
   {#if summary}
     <div class="grid-4" style="margin-bottom:1rem">
       <div class="card"><div style="font-size:.7rem;color:var(--muted)">Total Runs</div><div style="font-size:1.25rem;font-weight:700">{summary.total_runs}</div></div>
-      <div class="card"><div style="font-size:.7rem;color:var(--muted)">Avg CVA</div><div style="font-size:1.25rem;font-weight:700">{summary.avg_cva.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div></div>
-      <div class="card"><div style="font-size:.7rem;color:var(--muted)">Total Margin Called</div><div style="font-size:1.25rem;font-weight:700">{summary.total_margin_called.toLocaleString(undefined,{maximumFractionDigits:0})}</div></div>
+      <div class="card"><div style="font-size:.7rem;color:var(--muted)">Avg CVA</div><div style="font-size:1.25rem;font-weight:700">{fmtNum(summary.avg_cva)}</div></div>
+      <div class="card"><div style="font-size:.7rem;color:var(--muted)">Total Margin Called</div><div style="font-size:1.25rem;font-weight:700">{fmtNum(summary.total_margin_called, 0)}</div></div>
       <div class="card"><div style="font-size:.7rem;color:var(--muted)">Pending Calls</div><div style="font-size:1.25rem;font-weight:700;color:{summary.pending_calls>0?'var(--amber)':'var(--text)'}">{summary.pending_calls}</div></div>
     </div>
   {/if}
@@ -194,7 +195,7 @@
                   {#each port.derivatives ?? [] as d}
                     <tr>
                       <td><span class="badge badge-blue">{d.deriv_type}</span></td>
-                      <td>{d.notional.toLocaleString(undefined,{maximumFractionDigits:0})}</td>
+                      <td>{fmtNum(d.notional, 0)}</td>
                       <td>{d.maturity_years}y</td>
                       <td>{d.underlying_price.toFixed(4)}</td>
                       <td>{d.strike.toFixed(4)}</td>
@@ -234,8 +235,8 @@
             {#each history.slice(0,8) as h}
               <tr>
                 <td class="text-muted">{new Date(h.time).toLocaleDateString()}</td>
-                <td>{h.cva.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
-                <td>{h.margin_required.toLocaleString(undefined,{maximumFractionDigits:0})}</td>
+                <td>{fmtNum(h.cva)}</td>
+                <td>{fmtNum(h.margin_required, 0)}</td>
                 <td><span class="badge {h.is_stressed ? 'badge-amber' : 'badge-blue'}">{h.is_stressed ? 'Stress' : 'Base'}</span></td>
               </tr>
             {/each}
@@ -262,8 +263,8 @@
           {#each mcs as mc}
             <tr>
               <td><span class="badge {statusBadge[mc.status] ?? 'badge-muted'}">{mc.status}</span></td>
-              <td>{mc.amount.toLocaleString(undefined,{maximumFractionDigits:0})}</td>
-              <td style="color:var(--red)">{mc.excess_exposure.toLocaleString(undefined,{maximumFractionDigits:0})}</td>
+              <td>{fmtNum(mc.amount, 0)}</td>
+              <td style="color:var(--red)">{fmtNum(mc.excess_exposure, 0)}</td>
               <td class="text-muted">{new Date(mc.issued_at).toLocaleDateString()}</td>
               <td style="font-size:.78rem;color:var(--muted)">{mc.reason.slice(0,60)}</td>
             </tr>

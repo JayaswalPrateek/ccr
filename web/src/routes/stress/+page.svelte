@@ -9,6 +9,7 @@
   import PFEChart from '$components/charts/PFEChart.svelte';
   import EPEChart from '$components/charts/EPEChart.svelte';
   import type { SimulationRequest, SimulationResponse, StressScenarioRequest } from '$lib/types';
+  import { fmtNum } from '$lib/fmt';
 
   let stress:     StressScenarioRequest | null = null;
   let lastRequest: SimulationRequest | null = null;
@@ -110,11 +111,11 @@
       <div class="grid-3" style="margin-bottom:1rem">
         <MetricCard
           label="CVA (base)"
-          value={base ? base.cva.toLocaleString(undefined, { maximumFractionDigits: 2 }) : '—'}
+          value={base ? fmtNum(base.cva) : '—'}
         />
         <MetricCard
           label="CVA (stressed)"
-          value={stressed ? stressed.cva.toLocaleString(undefined, { maximumFractionDigits: 2 }) : 'N/A'}
+          value={stressed ? fmtNum(stressed.cva) : 'N/A'}
           delta={stressed && base ? delta(stressed.cva, base.cva) : 0}
         />
         <div class="card" style="display:flex;flex-direction:column;justify-content:center;align-items:center">
@@ -131,13 +132,13 @@
       </div>
 
       <div class="grid-3" style="margin-bottom:1rem">
-        <MetricCard label="Margin (base)"    value={base?.margin_required.toLocaleString(undefined,{maximumFractionDigits:0}) ?? '—'} />
+        <MetricCard label="Margin (base)"    value={base ? fmtNum(base.margin_required, 0) : '—'} />
         <MetricCard
           label="Margin (stressed)"
-          value={stressed?.margin_required.toLocaleString(undefined,{maximumFractionDigits:0}) ?? 'N/A'}
+          value={stressed ? fmtNum(stressed.margin_required, 0) : 'N/A'}
           delta={stressed && base ? delta(stressed.margin_required, base.margin_required) : 0}
         />
-        <MetricCard label="WWR-CVA (base)"   value={base ? base.wwr_cva.toLocaleString(undefined, { maximumFractionDigits: 2 }) : '—'} />
+        <MetricCard label="WWR-CVA (base)"   value={base ? fmtNum(base.wwr_cva) : '—'} />
       </div>
 
       <!-- Charts side-by-side -->
@@ -182,13 +183,13 @@
                   {@const epeD = delta(stressed.epe_profile[i] ?? 0, base?.epe_profile[i] ?? 0)}
                   <tr>
                     <td class="text-muted">{t.toFixed(3)}</td>
-                    <td>{(base?.pfe_profile[i] ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                    <td>{(stressed.pfe_profile[i] ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                    <td>{fmtNum(base?.pfe_profile[i] ?? 0, 0)}</td>
+                    <td>{fmtNum(stressed.pfe_profile[i] ?? 0, 0)}</td>
                     <td style="color:{pfeD > 0 ? 'var(--red)' : 'var(--green)'}">
                       {pfeD > 0 ? '+' : ''}{pfeD.toFixed(1)}%
                     </td>
-                    <td>{(base?.epe_profile[i] ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                    <td>{(stressed.epe_profile[i] ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                    <td>{fmtNum(base?.epe_profile[i] ?? 0, 0)}</td>
+                    <td>{fmtNum(stressed.epe_profile[i] ?? 0, 0)}</td>
                     <td style="color:{epeD > 0 ? 'var(--red)' : 'var(--green)'}">
                       {epeD > 0 ? '+' : ''}{epeD.toFixed(1)}%
                     </td>
