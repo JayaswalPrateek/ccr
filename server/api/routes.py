@@ -105,6 +105,7 @@ async def simulate(
     sim_run = SimulationRun(
         triggered_by    = current_user.id,
         trigger_type    = TriggerType.MANUAL,
+        counterparty_id = resolved_cp_id,
         sim_params_json = request.sim_params.model_dump(),
         stress_json     = request.stress.model_dump() if request.stress else None,
         status          = SimStatus.RUNNING,
