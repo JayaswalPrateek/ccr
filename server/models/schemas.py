@@ -69,6 +69,11 @@ class CounterpartyRequest(BaseModel):
     collateral:       float       = Field(0.0,  ge=0)
     margin_threshold: float       = Field(0.0,  ge=0)
     mpor_days:        int         = Field(10,   ge=0)
+    # Optional CDS term structure — if set, effective hazard rate is interpolated
+    hz_1y:            Optional[float] = None
+    hz_3y:            Optional[float] = None
+    hz_5y:            Optional[float] = None
+    hz_10y:           Optional[float] = None
 
 
 # ── Derivative specs ──────────────────────────────────────────────────────────

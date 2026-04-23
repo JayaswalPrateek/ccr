@@ -17,6 +17,8 @@ from server.core.database import get_db
 from server.models.db_models import (
     Counterparty,
     MarginCall,
+    Portfolio,
+    PriceHistory,
     RiskMetric,
     SimulationRun,
     User,
@@ -399,3 +401,131 @@ async def vol_cva(
         "meta": QueryMetadata(template="vol-cva", row_count=len(rows), executed_at=datetime.now(timezone.utc)),
         "rows": [r.model_dump() for r in rows],
     }
+
+
+# ── Historical backtesting ────────────────────────────────────────────────────
+
+class BacktestObservation(BaseModel):
+    date:     str
+    exposure: float
+    breach:   bool
+
+
+class BacktestResult(BaseModel):
+    pfe_profile:   List[float]
+    epe_profile:   List[float]
+    time_grid:     List[float]
+    realised:      List[BacktestObservation]
+    breach_count:  int
+    coverage_pct:  float
+
+
+@query_router.get("/counterparties/{cp_id}/backtest", response_model=BacktestResult)
+async def get_backtest(
+    cp_id:  str,
+    days:   int          = Query(90, ge=7, le=365),
+    db:     AsyncSession = Depends(get_db),
+    _u:     User         = Depends(get_current_user),
+) -> BacktestResult:
+    """
+    Return the latest PFE/EPE profile for this counterparty together with
+    realised mark-to-model exposures constructed from price history.
+
+    Each historical price observation is mapped to an approximate portfolio
+    exposure using a simple GBM log-return model:
+        exposure(t) ≈ Σ notional_i × max(S(t)/S₀ − K_i/S₀, 0)
+    where S₀ is the earliest price in the window and K_i = derivative strike.
+    This is an indicative approximation only — it ignores netting and
+    funding adjustments.
+    """
+    from datetime import timedelta
+    from sqlalchemy.orm import selectinload as _selectinload
+    import math
+
+    # Latest non-stressed simulation for this counterparty
+    rm_res = await db.execute(
+        select(RiskMetric)
+        .where(RiskMetric.counterparty_id == cp_id, RiskMetric.is_stressed == False)  # noqa: E712
+        .order_by(RiskMetric.time.desc())
+        .limit(1)
+    )
+    rm = rm_res.scalar_one_or_none()
+    if rm is None:
+        return BacktestResult(
+            pfe_profile=[], epe_profile=[], time_grid=[],
+            realised=[], breach_count=0, coverage_pct=100.0,
+        )
+
+    pfe = json.loads(rm.pfe_profile)     if rm.pfe_profile     else []
+    epe = json.loads(rm.epe_profile)     if rm.epe_profile     else []
+    tg  = json.loads(rm.time_grid_years) if rm.time_grid_years else []
+    peak_pfe = max(pfe) if pfe else 0.0
+
+    # Load counterparty's derivatives for exposure approximation
+    cp_res = await db.execute(
+        select(Counterparty)
+        .options(_selectinload(Counterparty.portfolios).selectinload(Portfolio.derivatives))
+        .where(Counterparty.id == cp_id)
+    )
+    cp = cp_res.scalar_one_or_none()
+    derivs = [d for p in (cp.portfolios if cp else []) for d in (p.derivatives or [])]
+
+    # Load price history for all known symbols over the last `days` days
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    ph_res = await db.execute(
+        select(PriceHistory)
+        .where(PriceHistory.ts >= cutoff)
+        .order_by(PriceHistory.symbol, PriceHistory.ts.asc())
+    )
+    ph_rows = ph_res.scalars().all()
+
+    # Group price history by symbol
+    by_symbol: dict[str, list[tuple[datetime, float]]] = {}
+    for ph in ph_rows:
+        by_symbol.setdefault(ph.symbol, []).append((ph.ts, ph.price))
+
+    # Build daily exposure estimates — one per calendar day
+    from collections import defaultdict
+    daily_exposure: dict[str, float] = defaultdict(float)
+    daily_count:    dict[str, int]   = defaultdict(int)
+
+    for symbol, series in by_symbol.items():
+        if len(series) < 2:
+            continue
+        s0 = series[0][1]  # earliest price as reference
+        if s0 <= 0:
+            continue
+        for ts, price in series[1:]:
+            date_str = ts.strftime("%Y-%m-%d")
+            total_exposure = 0.0
+            for d in derivs:
+                k  = d.strike if d.strike > 0 else s0
+                # Simplified call payoff as exposure proxy
+                payoff = max(price / s0 - k / s0, 0.0) * abs(d.notional)
+                total_exposure += payoff
+            if not derivs:
+                # No derivatives — use log-return as a proxy
+                total_exposure = abs(math.log(price / s0)) * 1_000_000
+            daily_exposure[date_str] += total_exposure
+            daily_count[date_str]    += 1
+
+    realised: list[BacktestObservation] = []
+    breach_count = 0
+    for date_str in sorted(daily_exposure.keys()):
+        exposure = daily_exposure[date_str] / max(daily_count[date_str], 1)
+        breach   = peak_pfe > 0 and exposure > peak_pfe
+        if breach:
+            breach_count += 1
+        realised.append(BacktestObservation(date=date_str, exposure=exposure, breach=breach))
+
+    n = len(realised)
+    coverage_pct = ((n - breach_count) / n * 100.0) if n > 0 else 100.0
+
+    return BacktestResult(
+        pfe_profile  = pfe,
+        epe_profile  = epe,
+        time_grid    = tg,
+        realised     = realised,
+        breach_count = breach_count,
+        coverage_pct = round(coverage_pct, 1),
+    )

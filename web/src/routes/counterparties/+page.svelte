@@ -161,6 +161,7 @@
               <td>
                 <div style="display:flex;gap:.4rem">
                   <a href="/counterparties/{cp.id}" class="btn btn-ghost btn-sm">View</a>
+                  <a href="/simulate?cp_id={cp.id}" class="btn btn-primary btn-sm">Simulate</a>
                   <RoleGuard roles={['ADMIN', 'RISK_MANAGER']}>
                     <button class="btn btn-danger btn-sm" on:click={() => remove(cp.id)}>Delete</button>
                   </RoleGuard>

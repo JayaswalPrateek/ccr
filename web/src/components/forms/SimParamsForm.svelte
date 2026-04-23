@@ -32,6 +32,10 @@
       if (initialSimParams.counterparty_recovery_rate != null) counterparty.recovery_rate = initialSimParams.counterparty_recovery_rate as number;
       if (initialSimParams.counterparty_collateral != null) counterparty.collateral    = initialSimParams.counterparty_collateral as number;
       if (initialSimParams.counterparty_mpor_days != null) counterparty.mpor_days     = initialSimParams.counterparty_mpor_days as number;
+      if (initialSimParams.counterparty_hz_1y  != null) counterparty.hz_1y  = initialSimParams.counterparty_hz_1y  as number;
+      if (initialSimParams.counterparty_hz_3y  != null) counterparty.hz_3y  = initialSimParams.counterparty_hz_3y  as number;
+      if (initialSimParams.counterparty_hz_5y  != null) counterparty.hz_5y  = initialSimParams.counterparty_hz_5y  as number;
+      if (initialSimParams.counterparty_hz_10y != null) counterparty.hz_10y = initialSimParams.counterparty_hz_10y as number;
       counterparty = { ...counterparty };
       // Load derivatives from the DB portfolio (overrides form defaults when navigating from a counterparty)
       if (Array.isArray(initialSimParams.initial_derivatives) && (initialSimParams.initial_derivatives as unknown[]).length > 0) {

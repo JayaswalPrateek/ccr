@@ -351,7 +351,36 @@ async def export_pdf(
         "hazard_rate":   cp.hazard_rate   if cp else 0.0,
         "recovery_rate": cp.recovery_rate if cp else 0.0,
         "collateral":    cp.collateral    if cp else 0.0,
+        "mpor_days":     cp.mpor_days     if cp else 10,
     }
+
+    # Compute SA-CCR if counterparty and derivatives are available
+    sa_ccr_dict: Optional[Dict[str, Any]] = None
+    if cp and base_row:
+        try:
+            from sqlalchemy.orm import selectinload as _selectinload
+            cp_full_res = await db.execute(
+                select(Counterparty)
+                .options(_selectinload(Counterparty.portfolios).selectinload(Portfolio.derivatives))
+                .where(Counterparty.id == cp.id)
+            )
+            cp_full = cp_full_res.scalar_one_or_none()
+            if cp_full:
+                all_derivs = [
+                    {"id": d.id, "deriv_type": d.deriv_type, "notional": d.notional, "maturity_years": d.maturity_years}
+                    for p in (cp_full.portfolios or [])
+                    for d in (p.derivatives or [])
+                ]
+                from server.reports.sa_ccr import compute_sa_ccr as _compute_sa_ccr
+                sa_res = _compute_sa_ccr(
+                    derivatives     = all_derivs,
+                    collateral      = cp.collateral,
+                    margin_required = base_row.margin_required,
+                    mpor_days       = cp.mpor_days,
+                )
+                sa_ccr_dict = {"ead": sa_res.ead, "rc": sa_res.rc, "add_on_aggregate": sa_res.add_on_aggregate}
+        except Exception:
+            pass  # SA-CCR is best-effort in the PDF
 
     pdf_bytes = export_simulation_pdf(
         run_id       = run_id,
@@ -361,6 +390,7 @@ async def export_pdf(
         stressed     = _row_to_dict(stress_row) if stress_row else None,
         margin_calls = mc_rows,
         engine_info  = _engine_info(),
+        sa_ccr       = sa_ccr_dict,
     )
 
     return StreamingResponse(
@@ -831,3 +861,130 @@ def _row_to_dict(row: RiskMetric) -> Dict[str, Any]:
         "time_grid_years": json.loads(row.time_grid_years) if row.time_grid_years else [],
         "arch_used":       "",  # stored in engine_info, not per-run
     }
+
+
+# ── SA-CCR (Basel III CRE52) ─────────────────────────────────────────────────
+
+class SACCRBreakdownItem(BaseModel):
+    deriv_id:      str
+    deriv_type:    str
+    notional:      float
+    maturity_years: float
+    sf:            float
+    mf:            float
+    add_on:        float
+
+
+class SACCRResponse(BaseModel):
+    ead:               float
+    rc:                float
+    add_on_aggregate:  float
+    alpha:             float
+    breakdown:         List[SACCRBreakdownItem]
+
+
+@router.get("/simulate/{run_id}/sa-ccr", response_model=SACCRResponse)
+async def get_sa_ccr(
+    run_id: str,
+    db:     AsyncSession = Depends(get_db),
+    _u:     User         = Depends(get_current_user),
+) -> SACCRResponse:
+    """Compute SA-CCR EAD for a completed simulation run (Basel III CRE52)."""
+    from sqlalchemy.orm import selectinload
+
+    # Load the simulation run
+    run_res = await db.execute(
+        select(SimulationRun).where(SimulationRun.id == run_id)
+    )
+    run = run_res.scalar_one_or_none()
+    if not run:
+        raise HTTPException(status_code=404, detail="Simulation run not found")
+
+    # Load the base (non-stressed) risk metric for this run
+    metric_res = await db.execute(
+        select(RiskMetric)
+        .where(RiskMetric.simulation_run_id == run_id, RiskMetric.is_stressed == False)  # noqa: E712
+        .order_by(RiskMetric.time.desc())
+        .limit(1)
+    )
+    metric = metric_res.scalar_one_or_none()
+    if not metric:
+        raise HTTPException(status_code=404, detail="Risk metric not found for this run")
+
+    # Load counterparty with portfolios → derivatives
+    cp_id = run.counterparty_id
+    if not cp_id:
+        raise HTTPException(status_code=400, detail="Run has no associated counterparty")
+
+    cp_res = await db.execute(
+        select(Counterparty)
+        .options(
+            selectinload(Counterparty.portfolios).selectinload(Portfolio.derivatives)
+        )
+        .where(Counterparty.id == cp_id)
+    )
+    cp = cp_res.scalar_one_or_none()
+    if not cp:
+        raise HTTPException(status_code=404, detail="Counterparty not found")
+
+    # Flatten all derivatives across portfolios
+    all_derivs = [
+        {
+            "id":             d.id,
+            "deriv_type":     d.deriv_type,
+            "notional":       d.notional,
+            "maturity_years": d.maturity_years,
+        }
+        for p in (cp.portfolios or [])
+        for d in (p.derivatives or [])
+    ]
+
+    from server.reports.sa_ccr import compute_sa_ccr
+
+    result = compute_sa_ccr(
+        derivatives    = all_derivs,
+        collateral     = cp.collateral,
+        margin_required = metric.margin_required,
+        mpor_days      = cp.mpor_days,
+    )
+
+    return SACCRResponse(
+        ead              = result.ead,
+        rc               = result.rc,
+        add_on_aggregate = result.add_on_aggregate,
+        alpha            = result.alpha,
+        breakdown        = [
+            SACCRBreakdownItem(
+                deriv_id       = b.deriv_id,
+                deriv_type     = b.deriv_type,
+                notional       = b.notional,
+                maturity_years = b.maturity_years,
+                sf             = b.sf,
+                mf             = b.mf,
+                add_on         = b.add_on,
+            )
+            for b in result.breakdown
+        ],
+    )
+
+
+# ── Test email ────────────────────────────────────────────────────────────────
+
+@router.post("/notify/test")
+async def send_test_email(
+    db:           AsyncSession = Depends(get_db),
+    current_user: User         = Depends(require_role(Role.ADMIN, Role.RISK_MANAGER)),
+):
+    """Send a test margin call email to the current user. ADMIN and RISK_MANAGER only."""
+    from server.notifications.alerts import send_margin_call_email
+
+    if not current_user.email:
+        raise HTTPException(status_code=400, detail="Your account has no email address configured.")
+
+    await send_margin_call_email(
+        to                = [current_user.email],
+        counterparty_name = "Demo Counterparty (Test)",
+        amount            = 1_250_000.0,
+        excess_exposure   = 450_000.0,
+    )
+    return {"sent": True, "to": [current_user.email]}

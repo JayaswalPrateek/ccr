@@ -45,6 +45,10 @@ class CounterpartyIn(BaseModel):
     collateral:       float = 0.0
     margin_threshold: float = 0.0
     mpor_days:        int   = 10
+    hz_1y:            Optional[float] = None
+    hz_3y:            Optional[float] = None
+    hz_5y:            Optional[float] = None
+    hz_10y:           Optional[float] = None
 
 
 class CounterpartyUpdate(BaseModel):
@@ -56,6 +60,10 @@ class CounterpartyUpdate(BaseModel):
     collateral:       float = 0.0
     margin_threshold: float = 0.0
     mpor_days:        int   = 10
+    hz_1y:            Optional[float] = None
+    hz_3y:            Optional[float] = None
+    hz_5y:            Optional[float] = None
+    hz_10y:           Optional[float] = None
 
 
 class CounterpartyOut(CounterpartyIn):

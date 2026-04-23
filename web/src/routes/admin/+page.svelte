@@ -12,6 +12,8 @@
   let creating   = false;
   let newUser    = { username: '', email: '', password: '', role: 'AUDITOR' };
   let activeTab: 'users' | 'audit' = 'users';
+  let emailToast = '';
+  let emailSending = false;
 
   onMount(async () => {
     if ($currentUser?.role !== 'ADMIN') { goto('/dashboard'); return; }
@@ -54,6 +56,20 @@
     auditLog = await api.getAuditLog({ limit: 200 });
   }
 
+  async function sendTestEmail() {
+    emailSending = true;
+    emailToast = '';
+    try {
+      const res = await api.testEmail();
+      emailToast = `Test email sent to ${res.to.join(', ')}`;
+    } catch (e) {
+      emailToast = `Failed: ${e instanceof Error ? e.message : 'Unknown error'}`;
+    } finally {
+      emailSending = false;
+      setTimeout(() => { emailToast = ''; }, 5000);
+    }
+  }
+
   const roleBadge: Record<string, string> = {
     ADMIN: 'badge-red', RISK_MANAGER: 'badge-blue', AUDITOR: 'badge-muted',
   };
@@ -66,8 +82,15 @@
     <div class="page-title">Administration</div>
     <div class="page-sub">User management and audit log</div>
   </div>
+  <button class="btn btn-ghost btn-sm" on:click={sendTestEmail} disabled={emailSending}>
+    {#if emailSending}<span class="spinner" style="width:12px;height:12px"></span>{/if}
+    Send Test Email
+  </button>
 </div>
 
+{#if emailToast}
+  <div class="alert {emailToast.startsWith('Failed') ? 'alert-error' : 'alert-success'}" style="margin-bottom:.75rem">{emailToast}</div>
+{/if}
 {#if error}<div class="alert alert-error">{error}</div>{/if}
 
 <!-- Tabs -->

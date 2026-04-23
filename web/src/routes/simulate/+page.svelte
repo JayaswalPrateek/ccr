@@ -11,7 +11,7 @@
   import EPEChart from '$components/charts/EPEChart.svelte';
   import AttributionChart from '$components/charts/AttributionChart.svelte';
   import MetricCard from '$components/ui/MetricCard.svelte';
-  import type { AttributionItem, SimulationRequest, SimulationResponse } from '$lib/types';
+  import type { AttributionItem, SACCRResult, SimulationRequest, SimulationResponse } from '$lib/types';
   import { fmtNum } from '$lib/fmt';
 
   let result:            SimulationResponse | null = null;
@@ -78,6 +78,11 @@
           counterparty_recovery_rate: cp.recovery_rate,
           counterparty_collateral: cp.collateral,
           counterparty_mpor_days: cp.mpor_days,
+          // Pass term-structure fields so the engine can interpolate an effective λ
+          ...(cp.hz_1y  != null ? { counterparty_hz_1y:  cp.hz_1y  } : {}),
+          ...(cp.hz_3y  != null ? { counterparty_hz_3y:  cp.hz_3y  } : {}),
+          ...(cp.hz_5y  != null ? { counterparty_hz_5y:  cp.hz_5y  } : {}),
+          ...(cp.hz_10y != null ? { counterparty_hz_10y: cp.hz_10y } : {}),
           ...(dbDerivatives.length > 0 ? { initial_derivatives: dbDerivatives } : {}),
         };
       } catch (_) {}
@@ -175,6 +180,8 @@
 
   let latestRunId: string | null = null;
   let attribution: AttributionItem[] = [];
+  let saccr: SACCRResult | null = null;
+  let showSaccrBreakdown = false;
   let fetchingRunId = false;   // prevent reactive re-entry
   function getLatestRunId() { return latestRunId; }
 
@@ -185,6 +192,7 @@
       latestRunId = runId ?? '';   // '' as sentinel — stops re-triggering
       if (runId) {
         api.getAttribution(runId).then((a) => { attribution = a; }).catch(() => {});
+        api.getSACCR(runId).then((s) => { saccr = s; }).catch(() => {});
       }
     }).catch(() => {}).finally(() => { fetchingRunId = false; });
   }
@@ -277,6 +285,10 @@
       </div>
 
       {#if attribution.length > 0}
+        {@const grossCva  = attribution.reduce((s, a) => s + Math.abs(a.allocated_cva), 0)}
+        {@const netCva    = result.base.cva}
+        {@const benefit   = grossCva - netCva}
+        {@const benefitPct = grossCva > 0 ? (benefit / grossCva) * 100 : 0}
         <div class="card mt-3">
           <div class="card-header">
             <span class="card-title">CVA Attribution by Derivative</span>
@@ -286,6 +298,32 @@
           <div style="font-size:.71rem;color:var(--muted);margin-top:.4rem">
             CVA<sub>i</sub> ≈ CVA<sub>total</sub> × (notional<sub>i</sub> × maturity<sub>i</sub>) / Σ(notional<sub>j</sub> × maturity<sub>j</sub>)
           </div>
+          {#if attribution.length > 1 && benefitPct > 0.1}
+            <div style="margin-top:.75rem;padding:.6rem .75rem;background:var(--surface2);border-radius:var(--radius-sm);border:1px solid var(--border)">
+              <div style="font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.5rem">Netting Benefit</div>
+              <div style="display:flex;gap:1.5rem;align-items:baseline;flex-wrap:wrap">
+                <div>
+                  <div style="font-size:.72rem;color:var(--muted)">Gross CVA (standalone)</div>
+                  <div style="font-size:1rem;font-weight:600">{fmtNum(grossCva)}</div>
+                </div>
+                <div style="color:var(--muted);font-size:.9rem">−</div>
+                <div>
+                  <div style="font-size:.72rem;color:var(--muted)">Net CVA (portfolio)</div>
+                  <div style="font-size:1rem;font-weight:600">{fmtNum(netCva)}</div>
+                </div>
+                <div style="color:var(--muted);font-size:.9rem">=</div>
+                <div>
+                  <div style="font-size:.72rem;color:var(--muted)">Netting Benefit</div>
+                  <div style="font-size:1rem;font-weight:700;color:var(--green)">
+                    ↓ {fmtNum(benefit)} <span style="font-size:.78rem;font-weight:500">({benefitPct.toFixed(1)}%)</span>
+                  </div>
+                </div>
+              </div>
+              <div style="font-size:.7rem;color:var(--muted);margin-top:.4rem">
+                Netting benefit arises when long and short positions partially offset each other under the same ISDA master agreement.
+              </div>
+            </div>
+          {/if}
         </div>
       {/if}
 
@@ -304,6 +342,56 @@
               Posting this amount provides a 10% cushion above the computed margin requirement to absorb intraday exposure moves.
             </div>
           </div>
+        </div>
+      {/if}
+
+      {#if saccr}
+        <div class="card mt-3" style="border-left:3px solid var(--blue)">
+          <div class="card-header">
+            <span class="card-title">SA-CCR Regulatory Capital</span>
+            <span class="badge badge-blue">Basel III CRE52</span>
+          </div>
+          <div class="grid-3" style="margin-bottom:.75rem">
+            <div>
+              <div style="font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.25rem">EAD (α=1.4)</div>
+              <div style="font-size:1.4rem;font-weight:700;color:var(--blue)">{fmtNum(saccr.ead, 0)}</div>
+            </div>
+            <div>
+              <div style="font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.25rem">Replacement Cost (RC)</div>
+              <div style="font-size:1.2rem;font-weight:600">{fmtNum(saccr.rc, 0)}</div>
+            </div>
+            <div>
+              <div style="font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:.25rem">Add-On Aggregate</div>
+              <div style="font-size:1.2rem;font-weight:600">{fmtNum(saccr.add_on_aggregate, 0)}</div>
+            </div>
+          </div>
+          <div style="font-size:.75rem;color:var(--muted);margin-bottom:.5rem">
+            EAD = {saccr.alpha} × (RC + AddOn) = {saccr.alpha} × ({fmtNum(saccr.rc, 0)} + {fmtNum(saccr.add_on_aggregate, 0)})
+          </div>
+          <button class="btn btn-ghost btn-sm" on:click={() => showSaccrBreakdown = !showSaccrBreakdown}>
+            {showSaccrBreakdown ? '▲ Hide' : '▼ Show'} per-derivative breakdown
+          </button>
+          {#if showSaccrBreakdown && saccr.breakdown.length > 0}
+            <div class="table-wrap" style="margin-top:.5rem">
+              <table>
+                <thead>
+                  <tr><th>Type</th><th>Notional</th><th>Maturity</th><th>SF</th><th>MF</th><th>Add-On</th></tr>
+                </thead>
+                <tbody>
+                  {#each saccr.breakdown as b}
+                    <tr>
+                      <td><span class="badge badge-blue">{b.deriv_type}</span></td>
+                      <td>{fmtNum(b.notional, 0)}</td>
+                      <td>{b.maturity_years.toFixed(1)}y</td>
+                      <td>{(b.sf * 100).toFixed(3)}%</td>
+                      <td>{b.mf.toFixed(4)}</td>
+                      <td style="font-weight:500">{fmtNum(b.add_on, 0)}</td>
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+            </div>
+          {/if}
         </div>
       {/if}
 

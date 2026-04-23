@@ -6,6 +6,7 @@
 import type {
   AttributionItem,
   AuditLogItem,
+  BacktestResult,
   ConcentrationItem,
   Counterparty,
   Derivative,
@@ -17,6 +18,7 @@ import type {
   Portfolio,
   PriceHistoryItem,
   RiskTimelineRow,
+  SACCRResult,
   SimPreset,
   SimulationHistoryItem,
   SimulationRequest,
@@ -250,6 +252,18 @@ class ApiClient {
 
   async notifyCounterparty(id: string): Promise<{ status: string; margin_call_id: string }> {
     return this.request('POST', `/api/v1/margin-calls/${id}/notify`);
+  }
+
+  async testEmail(): Promise<{ sent: boolean; to: string[] }> {
+    return this.request('POST', '/api/v1/notify/test');
+  }
+
+  async getSACCR(runId: string): Promise<SACCRResult> {
+    return this.request<SACCRResult>('GET', `/api/v1/simulate/${runId}/sa-ccr`);
+  }
+
+  async getBacktest(cpId: string, days = 90): Promise<BacktestResult> {
+    return this.request<BacktestResult>('GET', `/api/v1/query/counterparties/${cpId}/backtest?days=${days}`);
   }
 
   // ── Market data ─────────────────────────────────────────────────────────────

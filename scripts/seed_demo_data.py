@@ -76,6 +76,7 @@ from server.models.schemas import (
     SimulationRequest,
     StressScenarioRequest as StressParams,
 )
+from server.models.db_models import PriceHistory
 from server.notifications.audit import log_event
 
 
@@ -205,6 +206,54 @@ async def _run_sim(db, request: SimulationRequest, label: str, user_id: str,
         _p(f"  margin call: excess={base.margin_required - collateral:,.0f}")
         return mc.id   # return margin call id so caller can change status
     return sim_run.id
+
+
+async def _seed_price_history(db) -> None:
+    """Insert 90 days of synthetic GBM price paths for backtest data.
+
+    Skips symbols that already have ≥ 80 rows so re-runs are idempotent.
+    """
+    import math
+    import random
+
+    TODAY    = datetime.now(timezone.utc).replace(hour=16, minute=0, second=0, microsecond=0)
+    DAYS     = 90
+    SYMBOLS  = [
+        ("SPX",     4_500.0, 0.18),   # S&P 500 proxy
+        ("EUR.USD",     1.08, 0.08),   # EUR/USD FX
+        ("OIL.WTI",    80.0, 0.35),   # Crude oil
+        ("SONIA",    0.052, 0.04),    # Short rate (IRS underlying proxy)
+        ("IG.CDX",   0.032, 0.12),    # Investment-grade CDS spread proxy
+    ]
+
+    rng = random.Random(2024_04_23)
+
+    for symbol, s0, annual_vol in SYMBOLS:
+        # Check if already seeded
+        from sqlalchemy import func as sqlfunc
+        count_res = await db.execute(
+            select(sqlfunc.count()).select_from(PriceHistory).where(PriceHistory.symbol == symbol)
+        )
+        if (count_res.scalar() or 0) >= 80:
+            _p(f"price history '{symbol}' exists — skip")
+            continue
+
+        dt   = 1 / 252          # daily step
+        vol  = annual_vol
+        mu   = 0.0              # risk-neutral drift for mark-to-model
+        price = s0
+        rows  = []
+        for d in range(DAYS, 0, -1):
+            ts    = TODAY - timedelta(days=d)
+            z     = rng.gauss(0, 1)
+            price = price * math.exp((mu - 0.5 * vol**2) * dt + vol * math.sqrt(dt) * z)
+            rows.append(PriceHistory(ts=ts, symbol=symbol, price=round(price, 6), source="seed"))
+
+        db.add_all(rows)
+        await db.flush()
+        _p(f"price history '{symbol}': {len(rows)} rows  (s0={s0}, σ={annual_vol})")
+
+    await db.commit()
 
 
 # ── Main ─────────────────────────────────────────────────────────────────────
@@ -585,6 +634,10 @@ async def main() -> None:
             ))
         await db.commit()
         _p("added audit log entries")
+
+        # ── Price history (backtest data) ─────────────────────────────────────
+        print("\n[Price History]")
+        await _seed_price_history(db)
 
     # ── Summary ───────────────────────────────────────────────────────────────
     print("\n" + "=" * 56)

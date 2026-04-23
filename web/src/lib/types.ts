@@ -54,6 +54,10 @@ export interface CounterpartyRequest {
   collateral: number;
   margin_threshold: number;
   mpor_days: number;
+  hz_1y?:  number | null;
+  hz_3y?:  number | null;
+  hz_5y?:  number | null;
+  hz_10y?: number | null;
 }
 
 export interface DerivativeSpecRequest {
@@ -149,6 +153,10 @@ export interface Counterparty {
   collateral: number;
   margin_threshold: number;
   mpor_days: number;
+  hz_1y:  number | null;
+  hz_3y:  number | null;
+  hz_5y:  number | null;
+  hz_10y: number | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -217,6 +225,43 @@ export interface TickData {
   data: Record<string, number>;
   ts: number;
   note: string;
+}
+
+// ── Backtesting ───────────────────────────────────────────────────────────────
+
+export interface BacktestObservation {
+  date:     string;
+  exposure: number;
+  breach:   boolean;
+}
+
+export interface BacktestResult {
+  pfe_profile:   number[];
+  epe_profile:   number[];
+  time_grid:     number[];
+  realised:      BacktestObservation[];
+  breach_count:  number;
+  coverage_pct:  number;
+}
+
+// ── SA-CCR ────────────────────────────────────────────────────────────────────
+
+export interface SACCRBreakdownItem {
+  deriv_id:      string;
+  deriv_type:    string;
+  notional:      number;
+  maturity_years: number;
+  sf:            number;
+  mf:            number;
+  add_on:        number;
+}
+
+export interface SACCRResult {
+  ead:               number;
+  rc:                number;
+  add_on_aggregate:  number;
+  alpha:             number;
+  breakdown:         SACCRBreakdownItem[];
 }
 
 // ── Audit log ─────────────────────────────────────────────────────────────────

@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     smtp_from: str = "ccr-alerts@example.com"
 
+    # Public URL used in email links (no trailing slash)
+    app_url: str = "http://localhost:5173"
+
     # Scheduler killswitch — set SCHEDULER_ENABLED=false to disable all
     # background jobs without redeploying (useful during incidents).
     scheduler_enabled: bool = True

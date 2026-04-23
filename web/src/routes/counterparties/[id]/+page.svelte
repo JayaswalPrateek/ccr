@@ -4,7 +4,9 @@
   import { api } from '$lib/api';
   import RoleGuard from '$components/ui/RoleGuard.svelte';
   import CVABarChart from '$components/charts/CVABarChart.svelte';
-  import type { Counterparty, MarginCall, Portfolio, SimulationHistoryItem } from '$lib/types';
+  import SurvivalCurveChart from '$components/charts/SurvivalCurveChart.svelte';
+  import BacktestChart from '$components/charts/BacktestChart.svelte';
+  import type { BacktestResult, Counterparty, MarginCall, Portfolio, SimulationHistoryItem } from '$lib/types';
   import { fmtNum } from '$lib/fmt';
 
   interface CpSummary { total_runs: number; avg_cva: number; latest_cva: number | null; total_margin_called: number; pending_calls: number; settled_calls: number; total_derivatives: number; }
@@ -18,6 +20,7 @@
   let editForm: Partial<Counterparty> = {};
   let expandedPortfolio: string | null = null;
   let summary: CpSummary | null = null;
+  let backtest: BacktestResult | null = null;
 
   $: id = $page.params.id!;
 
@@ -30,6 +33,7 @@
       ]);
       editForm = { ...cp };
       api.getCounterpartySummary(id).then(s => { summary = s; }).catch(() => {});
+      api.getBacktest(id).then(b => { backtest = b; }).catch(() => {});
     } catch (e) {
       error = e instanceof Error ? e.message : 'Failed to load';
     } finally {
@@ -146,6 +150,13 @@
         <div class="form-group"><label class="form-label">Collateral</label><input class="form-input" type="number" bind:value={editForm.collateral} /></div>
         <div class="form-group"><label class="form-label">MPOR Days</label><input class="form-input" type="number" bind:value={editForm.mpor_days} /></div>
       </div>
+      <div style="font-size:.78rem;color:var(--muted);margin:.5rem 0 .25rem">CDS Term Structure (optional — overrides flat hazard rate for CVA)</div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">λ 1Y</label><input class="form-input" type="number" bind:value={editForm.hz_1y} step="0.001" placeholder="e.g. 0.01" /></div>
+        <div class="form-group"><label class="form-label">λ 3Y</label><input class="form-input" type="number" bind:value={editForm.hz_3y} step="0.001" placeholder="e.g. 0.02" /></div>
+        <div class="form-group"><label class="form-label">λ 5Y</label><input class="form-input" type="number" bind:value={editForm.hz_5y} step="0.001" placeholder="e.g. 0.03" /></div>
+        <div class="form-group"><label class="form-label">λ 10Y</label><input class="form-input" type="number" bind:value={editForm.hz_10y} step="0.001" placeholder="e.g. 0.05" /></div>
+      </div>
       <button class="btn btn-success" on:click={saveEdit}>Save</button>
     </div>
   {/if}
@@ -252,6 +263,60 @@
       <CVABarChart {history} height={220} />
     </div>
   </div>
+
+  <!-- Historical Backtesting -->
+  {#if backtest && (backtest.realised.length > 0 || backtest.pfe_profile.length > 0)}
+    <div class="card" style="margin-bottom:1rem">
+      <div class="card-header">
+        <span class="card-title">Historical Backtesting</span>
+        <div style="display:flex;gap:.5rem;align-items:center">
+          {#if backtest.breach_count > 0}
+            <span class="badge badge-red">{backtest.breach_count} breach{backtest.breach_count !== 1 ? 'es' : ''}</span>
+          {/if}
+          <span class="badge {backtest.coverage_pct >= 95 ? 'badge-green' : backtest.coverage_pct >= 85 ? 'badge-amber' : 'badge-red'}">
+            {backtest.coverage_pct.toFixed(1)}% coverage
+          </span>
+        </div>
+      </div>
+      {#if backtest.realised.length > 0}
+        <BacktestChart
+          pfeProfile={backtest.pfe_profile}
+          realised={backtest.realised}
+          coveragePct={backtest.coverage_pct}
+          height={240}
+        />
+        <div style="font-size:.72rem;color:var(--muted);margin-top:.4rem">
+          Realised exposures are indicative mark-to-model estimates using GBM log-return pricing.
+          Coverage = % of historical dates where realised exposure stayed within PFE band.
+        </div>
+      {:else}
+        <div style="color:var(--muted);font-size:.8rem;padding:.75rem 0">
+          No price history data available. Run market data refresh and simulate first.
+        </div>
+      {/if}
+    </div>
+  {/if}
+
+  <!-- Survival Curve — shown when term structure is configured -->
+  {#if cp.hz_1y || cp.hz_3y || cp.hz_5y || cp.hz_10y}
+    <div class="card" style="margin-bottom:1rem">
+      <div class="card-header">
+        <span class="card-title">Credit Survival Curve</span>
+        <span class="badge badge-blue">CDS Term Structure</span>
+      </div>
+      <SurvivalCurveChart
+        hz_1y={cp.hz_1y}
+        hz_3y={cp.hz_3y}
+        hz_5y={cp.hz_5y}
+        hz_10y={cp.hz_10y}
+        flatRate={cp.hazard_rate}
+        height={200}
+      />
+      <div style="font-size:.72rem;color:var(--muted);margin-top:.4rem">
+        S(t) = exp(−λ(t)·t) · Blue: term-structure curve · Amber dashed: flat hazard rate baseline
+      </div>
+    </div>
+  {/if}
 
   <!-- Margin calls -->
   <div class="card">

@@ -23,6 +23,38 @@ from server.models.schemas import (
 )
 
 
+def _effective_hazard_rate(
+    hz_1y: float | None,
+    hz_3y: float | None,
+    hz_5y: float | None,
+    hz_10y: float | None,
+    horizon: float,
+    flat_rate: float,
+) -> float:
+    """
+    Compute an effective flat hazard rate from a CDS term structure.
+
+    Uses piecewise-linear interpolation of the term structure, then integrates
+    via the trapezoid rule so that the total default probability over [0, T]
+    matches the term-structure integral.  Falls back to flat_rate when fewer
+    than two term-structure points are provided.
+    """
+    tenors = [(t, h) for t, h in [(1.0, hz_1y), (3.0, hz_3y), (5.0, hz_5y), (10.0, hz_10y)] if h is not None]
+    if len(tenors) < 2:
+        return flat_rate
+    try:
+        import numpy as np
+        ts  = [p[0] for p in tenors]
+        hzs = [p[1] for p in tenors]
+        t_grid  = np.linspace(0.0, horizon, 200)
+        hz_grid = np.interp(t_grid, ts, hzs, left=hzs[0], right=hzs[-1])
+        trapz = getattr(np, "trapezoid", None) or getattr(np, "trapz", None)
+        eff = float(trapz(hz_grid, t_grid) / max(horizon, 1e-9))
+        return max(eff, 0.0)
+    except Exception:
+        return flat_rate
+
+
 def build_engine_config(req: SimulationRequest) -> _ccr.EngineConfig:
     """Map a SimulationRequest (Pydantic) to a _ccr_engine.EngineConfig (C++)."""
     cfg = _ccr.EngineConfig()
@@ -46,7 +78,15 @@ def build_engine_config(req: SimulationRequest) -> _ccr.EngineConfig:
     cp.id               = req.counterparty.id
     cp.name             = req.counterparty.name
     cp.credit_rating    = _ccr.CreditRating(int(req.counterparty.credit_rating))
-    cp.hazard_rate      = req.counterparty.hazard_rate
+    # Apply term-structure interpolation if hz fields are provided
+    cp.hazard_rate      = _effective_hazard_rate(
+        hz_1y     = req.counterparty.hz_1y,
+        hz_3y     = req.counterparty.hz_3y,
+        hz_5y     = req.counterparty.hz_5y,
+        hz_10y    = req.counterparty.hz_10y,
+        horizon   = req.sim_params.horizon_years,
+        flat_rate = req.counterparty.hazard_rate,
+    )
     cp.recovery_rate    = req.counterparty.recovery_rate
     cp.collateral       = req.counterparty.collateral
     cp.margin_threshold = req.counterparty.margin_threshold

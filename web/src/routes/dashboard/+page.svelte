@@ -144,7 +144,7 @@
     <MetricCard
       label="CVA"
       value={base ? fmtNum(base.cva) : '—'}
-      breached={!!base && base.cva > 0.05}
+      breached={!!base && base.cva > 1000}
     />
     <MetricCard
       label="WWR-CVA"
@@ -251,7 +251,7 @@
     </div>
   </div>
 
-  <!-- ── Old Row 4: Margin calls + recent runs ──────────────────────── -->
+  <!-- ── Row 4: Margin calls + recent runs ──────────────────────────── -->
   <div class="grid-2">
     <div class="card">
       <div class="card-header">
@@ -290,14 +290,16 @@
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Date</th><th>CVA</th><th>Margin</th><th>Type</th></tr></thead>
+          <thead><tr><th>Date</th><th>CVA</th><th>Margin</th><th>Note</th></tr></thead>
           <tbody>
             {#each history.filter((h) => !h.is_stressed).slice(0, 6) as item}
               <tr>
                 <td class="text-muted">{new Date(item.time).toLocaleDateString()}</td>
                 <td>{fmtNum(item.cva)}</td>
                 <td>{fmtNum(item.margin_required, 0)}</td>
-                <td><span class="badge badge-blue">Base</span></td>
+                <td class="text-muted" style="font-size:.73rem;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+                  {item.note ?? '—'}
+                </td>
               </tr>
             {/each}
             {#if history.length === 0}
