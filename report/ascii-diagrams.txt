@@ -1,0 +1,690 @@
+
+
+
+REALTIME CCR & MARGIN ENGINE
+UML Diagrams & System Design
+Final Year Project Report
+
+
+Diagram Type	Count
+System Architecture	1
+Class Diagram	1
+DFD Level 0 & Level 1	2
+Use Case Diagrams	3
+Sequence Diagrams	3
+Activity Diagrams	2
+Total	12
+ 
+1. System Architecture Diagram
+This high-level diagram shows the major components of the Realtime CCR & Margin Engine and how they interact across the full application stack.
+
+Note: Detailed internal architecture (server topology, deployment nodes, DB schema) is to be finalized. This diagram captures the logical component view.
+
+                         SYSTEM ARCHITECTURE
+                     Realtime CCR & Margin Engine
+
+  ┌──────────────────────────────────────────────────────────┐
+  │                  CLIENT LAYER (Browser)                  │
+  │                                                          │
+  │   ┌────────────┐  ┌────────────┐  ┌────────────────┐   │
+  │   │ Dashboard  │  │ Stress Test│  │ Margin /       │   │
+  │   │ Overview   │  │ Controls   │  │ Regulatory View│   │
+  │   └────────────┘  └────────────┘  └────────────────┘   │
+  │             WebSocket / REST API (JSON)                  │
+  └──────────────────────┬───────────────────────────────────┘
+                         │
+  ┌──────────────────────▼───────────────────────────────────┐
+  │           BACKEND / API LAYER (Python / FastAPI)          │
+  │                                                            │
+  │   ┌──────────────┐  ┌────────────────┐  ┌────────────┐  │
+  │   │ Auth &       │  │  Input         │  │  Scheduler │  │
+  │   │ Role Manager │  │  Validator     │  │  / Alerts  │  │
+  │   └──────────────┘  └────────────────┘  └────────────┘  │
+  │                                                            │
+  └────────────┬──────────────────────────────────┬───────────┘
+               │                                  │
+  ┌────────────▼────────────┐     ┌───────────────▼───────────┐
+  │    RISK ENGINE (C++)    │     │      DATABASE LAYER        │
+  │                         │     │                            │
+  │  ┌───────────────────┐  │     │  ┌─────────────────────┐  │
+  │  │ Monte Carlo Engine │  │     │  │ Counterparty &      │  │
+  │  │ (GBM + Jump Diff) │  │     │  │ Portfolio Data      │  │
+  │  └───────────────────┘  │     │  └─────────────────────┘  │
+  │  ┌───────────────────┐  │     │  ┌─────────────────────┐  │
+  │  │ Cholesky / WWR    │  │     │  │ Historical Metrics  │  │
+  │  │ Correlation Module│  │     │  │ & Audit Log         │  │
+  │  └───────────────────┘  │     │  └─────────────────────┘  │
+  │  ┌───────────────────┐  │     │  ┌─────────────────────┐  │
+  │  │ Exposure / PFE /  │  │     │  │ Simulation Results  │  │
+  │  │ EPE / CVA Calc    │  │     │  │ (TimescaleDB)       │  │
+  │  └───────────────────┘  │     │  └─────────────────────┘  │
+  │  ┌───────────────────┐  │     └────────────────────────────┘
+  │  │ Margin Call Alert │  │
+  │  │ Trigger Module    │  │
+  │  └───────────────────┘  │
+  └─────────────────────────┘
+
+  Key:  ──► = Request/Response   ──► = Data Flow
+ 
+2. Class Diagram
+Shows the core entities of the system, their attributes, methods, and relationships.
+
+                         CLASS DIAGRAM
+             Realtime CCR & Margin Engine — Core Entities
+
+  ┌─────────────────────┐      ┌──────────────────────────┐
+  │     Counterparty    │1    *│        Portfolio          │
+  ├─────────────────────┤──────├──────────────────────────┤
+  │ -id: String         │      │ -id: String               │
+  │ -name: String       │      │ -counterpartyId: String   │
+  │ -creditRating: Enum │      │ -derivatives: List<Deriv> │
+  │ -hazardRate: Float  │      │ -collateral: Float        │
+  │ -recoveryRate: Float│      │ -netValue: Float          │
+  ├─────────────────────┤      ├──────────────────────────┤
+  │ +getDefaultProb()   │      │ +getValue(): Float        │
+  │ +updateHazardRate() │      │ +getExposure(): Float     │
+  └─────────────────────┘      └──────────┬───────────────┘
+                                           │ 1
+                                           │ has-many
+                                           │ *
+                                ┌──────────▼───────────────┐
+                                │       Derivative          │
+                                ├──────────────────────────┤
+                                │ -id: String               │
+                                │ -type: Enum (IRS/CDS/FX)  │
+                                │ -notional: Float          │
+                                │ -maturity: Date           │
+                                │ -underlyingPrice: Float   │
+                                ├──────────────────────────┤
+                                │ +markToMarket(): Float    │
+                                └──────────────────────────┘
+
+  ┌─────────────────────┐      ┌──────────────────────────┐
+  │  SimulationEngine   │1    1│     RiskMetrics           │
+  ├─────────────────────┤──────├──────────────────────────┤
+  │ -numPaths: Int      │      │ -pfe99: Float             │
+  │ -horizon: Float     │      │ -epe: Float               │
+  │ -dt: Float          │      │ -cva: Float               │
+  │ -mu: Float          │      │ -wwr: Float               │
+  │ -sigma: Float       │      │ -marginRequired: Float    │
+  │ -rho: Float (WWR)   │      │ -computedAt: Timestamp    │
+  ├─────────────────────┤      ├──────────────────────────┤
+  │ +generateNormals()  │      │ +toJSON(): String         │
+  │ +applyCholesky()    │      │ +export(): File           │
+  │ +runGBM(): Paths    │      └──────────────────────────┘
+  │ +calcExposure()     │
+  │ +calcPFE(): Float   │
+  │ +calcCVA(): Float   │
+  └─────────┬───────────┘
+             │
+             │ uses
+             ▼
+  ┌──────────────────────┐      ┌──────────────────────────┐
+  │    StressScenario    │      │       MarginCall          │
+  ├──────────────────────┤      ├──────────────────────────┤
+  │ -volShock: Float     │      │ -id: String               │
+  │ -fxShock: Float      │      │ -counterpartyId: String   │
+  │ -equityShock: Float  │      │ -amount: Float            │
+  │ -interestRateShock   │      │ -status: Enum             │
+  │ -creditSpreadShock   │      │ -triggeredAt: Timestamp   │
+  │ -jumpAmplitude: Float│      │ -dueBy: Timestamp         │
+  ├──────────────────────┤      ├──────────────────────────┤
+  │ +apply(): Scenario   │      │ +send()                   │
+  └──────────────────────┘      │ +acknowledge()            │
+                                └──────────────────────────┘
+
+  ┌─────────────────────┐      ┌──────────────────────────┐
+  │        User          │1    *│       AuditLog            │
+  ├─────────────────────┤──────├──────────────────────────┤
+  │ -id: UUID           │      │ -id: UUID                 │
+  │ -username: String   │      │ -userId: UUID             │
+  │ -email: String      │      │ -action: String           │
+  │ -role: Enum         │      │ -resourceType: String     │
+  │   (ADMIN/RISK_MGR/  │      │ -resourceId: UUID         │
+  │    AUDITOR)         │      │ -detail: JSON             │
+  │ -isActive: Boolean  │      │ -time: Timestamp          │
+  ├─────────────────────┤      └──────────────────────────┘
+  │ +authenticate()     │
+  │ +hasRole(): Boolean │
+  └─────────────────────┘
+
+  ┌─────────────────────┐      ┌──────────────────────────┐
+  │   SimulationRun     │1    1│     SA-CCR Result         │
+  ├─────────────────────┤──────├──────────────────────────┤
+  │ -id: UUID           │      │ -ead: Float               │
+  │ -counterpartyId: UUID│     │ -rc: Float                │
+  │ -triggeredBy: UUID  │      │ -addOnAggregate: Float    │
+  │ -triggerType: Enum  │      │ -alpha: Float (1.4)       │
+  │ -status: Enum       │      │ -breakdown: JSON          │
+  │ -simParamsJson: JSON│      └──────────────────────────┘
+  │ -stressJson: JSON   │
+  │ -note: String       │      ┌──────────────────────────┐
+  │ -startedAt: Timestamp│     │       SimPreset           │
+  │ -finishedAt: Timestamp│    ├──────────────────────────┤
+  ├─────────────────────┤      │ -id: UUID                 │
+  │ +getMetrics(): JSON │      │ -ownerId: UUID            │
+  │ +getSACCR(): JSON   │      │ -name: String             │
+  └─────────────────────┘      │ -isShared: Boolean        │
+                               │ -paramsJson: JSON         │
+                               │ -stressJson: JSON         │
+                               │ -useCount: Int            │
+                               │ -lastUsedAt: Timestamp    │
+                               ├──────────────────────────┤
+                               │ +apply(): SimParams       │
+                               └──────────────────────────┘
+
+  Counterparty additional attributes (hazard term structure):
+  ┌──────────────────────────────────────────────┐
+  │  Counterparty (extended)                      │
+  │  -hz_1y: Float   (1-year hazard rate)        │
+  │  -hz_3y: Float   (3-year hazard rate)        │
+  │  -hz_5y: Float   (5-year hazard rate)        │
+  │  -hz_10y: Float  (10-year hazard rate)       │
+  │  +getSurvivalCurve(): Float[]                │
+  └──────────────────────────────────────────────┘
+
+  Relationships:
+  Counterparty 1──* Portfolio
+  Portfolio    1──* Derivative
+  Counterparty 1──* SimulationRun
+  SimulationEngine 1──1 RiskMetrics (produces)
+  SimulationRun 1──1 RiskMetrics (persisted)
+  SimulationRun 1──0..1 SA-CCR Result (on demand)
+  StressScenario ──uses──> SimulationEngine
+  RiskMetrics ──triggers──> MarginCall
+  User 1──* SimulationRun (triggered_by)
+  User 1──* AuditLog (actor)
+  User 1──* SimPreset (owner)
+ 
+3. Data Flow Diagrams
+3.1  DFD Level 0 — Context Diagram
+The Level 0 DFD shows the system as a single process and all external entities that interact with it.
+
+                      DFD LEVEL 0 — CONTEXT DIAGRAM
+                      Realtime CCR & Margin Engine
+
+  ┌──────────────┐        Market Data         ┌──────────────┐
+  │  Market Data │──────────────────────────►│              │
+  │  Provider    │                            │              │
+  └──────────────┘  Prices / Rates / Spreads  │              │
+                                              │              │
+  ┌──────────────┐     Counterparty Config    │              │
+  │ Risk Manager │◄──────────────────────────►│   REALTIME   │
+  │  (User)      │     PFE / CVA / Margin     │     CCR      │
+  └──────────────┘     Stress Params          │    ENGINE    │
+                                              │   SYSTEM     │
+  ┌──────────────┐    Margin Call Alert       │              │
+  │ Counterparty │◄──────────────────────────►│              │
+  │  (External)  │    Collateral Top-up Req.  │              │
+  └──────────────┘                            │              │
+                                              │              │
+  ┌──────────────┐   Regulatory Reports       │              │
+  │  Regulator   │◄────────────────────────── │              │
+  │  (Basel III) │   SA-CCR Capital Data      └──────────────┘
+  └──────────────┘
+
+  External Entities:  Market Data Provider │ Risk Manager │
+                      Counterparty │ Regulator
+ 
+3.2  DFD Level 1 — Detailed Process View
+Breaks down the internal processing into major sub-processes with data stores.
+
+                        DFD LEVEL 1 — DETAILED
+
+  [External]  Market Prices
+  Provider ──────────────────►  P1: MARKET DATA INGESTION
+                                      │
+                                      │ Normalised Price Ticks
+                                      ▼
+                          ┌────── D1: Price Cache ─────────┐
+                          │   (price_history / TimescaleDB)│
+                          └──────────────┬─────────────────┘
+                                         │
+                       Stress Params     │ Spot Prices
+  [Risk Manager] ──────────────────►  P2: SIMULATION ENGINE
+                                      (Monte Carlo / GBM)
+                                             │
+                              10k Paths      │
+                         ◄────────────────── │
+                          ┌─────────────────▼──────────────┐
+                          │  D2: Simulation Results Store   │
+                          └──────────────┬─────────────────┘
+                                         │ Exposure Distribution
+                                         ▼
+  [Risk Manager] ◄─────────────  P3: RISK METRIC CALCULATION
+  (PFE / CVA / WWR)                  (PFE, EPE, CVA, WWR)
+                                             │
+                                             │ Risk Metrics
+                          ┌─────────────────▼──────────────┐
+                          │  D3: Risk Metrics Database       │
+                          │  (TimescaleDB — time-series)     │
+                          └──────────────┬─────────────────┘
+                                         │
+                                         ▼
+  [Counterparty] ◄───────────────  P4: MARGIN CALL ENGINE
+  (Alert / Request)            (Compare Exposure vs Collateral)
+                                             │
+                                             │ Audit Trail
+                          ┌─────────────────▼──────────────┐
+                          │  D4: Audit & Event Log           │
+                          └──────────────────────────────────┘
+                                             │
+  [Regulator] ◄──────────────────   P5: REGULATORY REPORT GEN
+  (SA-CCR / Basel III Reports)      (Basel III SA-CCR Compliance)
+
+  Data Stores:  D1 Price Cache │ D2 Simulation Results
+                D3 Risk Metrics DB │ D4 Audit Log
+ 
+4. Use Case Diagrams
+4.1  Use Case: Simulation & Exposure Module
+
+           USE CASE DIAGRAM — SIMULATION & EXPOSURE MODULE
+
+                         ┌─────────────────────────────────────┐
+                         │   <<System>>                         │
+                         │   CCR Simulation & Exposure          │
+                         │                                      │
+                         │   ○ Configure Simulation Params      │
+                         │     (paths, horizon, dt, sigma, mu)  │
+                         │                                      │
+                         │   ○ Run Monte Carlo Simulation        │
+                         │     <<include>>                      │
+                         │        └─ Generate GBM Paths         │
+                         │        └─ Apply Cholesky Correlation  │
+                         │                                      │
+  ┌──────────────┐        │   ○ View PFE Profile (over time)     │
+  │              │        │                                      │
+  │    Risk      │────────┤   ○ View Exposure Distribution       │
+  │   Manager    │        │                                      │
+  │              │        │   ○ Freeze / Capture Market Data     │
+  └──────────────┘        │                                      │
+                         │   ○ Export Results (PDF / CSV)        │
+                         │                                      │
+                         │   ○ Enable Quick Approx Mode          │
+                         │     <<extend>>                       │
+                         │        └─ Use Reduced Paths           │
+                         │                                      │
+                         └─────────────────────────────────────┘
+
+  Actors:  Risk Manager
+  Notes:   <<include>> = mandatory sub-flow
+            <<extend>> = optional enhancement
+ 
+4.2  Use Case: Margin Management Module
+
+              USE CASE DIAGRAM — MARGIN MANAGEMENT MODULE
+
+                          ┌────────────────────────────────────┐
+                          │  <<System>>  Margin Management     │
+                          │                                    │
+                          │  ○ View Active Margin Calls        │
+                          │    (status, amount, counterparty)  │
+                          │                                    │
+  ┌───────────────┐       │  ○ Trigger Manual Margin Call      │
+  │    Risk       │       │    <<include>>                     │
+  │   Manager     │───────┤       └─ Compute Excess Exposure   │
+  └───────────────┘       │       └─ Notify Counterparty       │
+                          │                                    │
+                          │  ○ Acknowledge Margin Call         │
+                          │                                    │
+                          │  ○ Suggest Optimal Collateral Amt  │
+  ┌───────────────┐       │    <<extend>>                      │
+  │  Counterparty │───────┤       └─ Receive Collateral Top-up │
+  │  (External)   │       │                                    │
+  └───────────────┘       │  ○ View Collateral vs Exposure     │
+                          │    (Current / Historical)          │
+                          │                                    │
+                          │  ○ Set Margin Alert Thresholds     │
+                          │                                    │
+                          │  ○ Export Margin Report            │
+                          └────────────────────────────────────┘
+
+  Actors:  Risk Manager, Counterparty (external)
+ 
+4.3  Use Case: Stress Testing & Regulatory Module
+
+         USE CASE DIAGRAM — STRESS TESTING & REGULATORY MODULE
+
+                          ┌────────────────────────────────────────┐
+                          │   <<System>>                           │
+                          │   Stress Testing & Regulatory          │
+                          │                                        │
+                          │  ○ Configure Stress Parameters         │
+                          │    (vol +20%, FX -10%, equity -15%,    │
+                          │     credit spread, hazard rate, rho)   │
+  ┌───────────────┐       │                                        │
+  │    Risk       │       │  ○ Run Stress Scenario                 │
+  │   Manager     │───────┤    <<include>>                         │
+  └───────────────┘       │       └─ Re-run Simulation w/ Shocks   │
+                          │       └─ Recompute PFE / CVA           │
+                          │                                        │
+                          │  ○ Compare Stressed vs Base Metrics    │
+                          │    (Delta highlights: green / red)     │
+                          │                                        │
+                          │  ○ Explain Exposure Spike              │
+                          │    (Jump-at-Default logging)           │
+                          │                                        │
+                          │  ○ View Regulatory Capital (SA-CCR)    │
+                          │                                        │
+  ┌───────────────┐       │  ○ View SA-CCR Capital (EAD/RC/AddOn)   │
+  │   Regulator   │───────┤                                        │
+  └───────────────┘       │  ○ Generate Regulatory Report          │
+                          │    <<include>>                         │
+                          │       └─ Compile SA-CCR / Basel III    │
+                          │       └─ Export as PDF / CSV           │
+                          │                                        │
+                          └────────────────────────────────────────┘
+
+  Actors:  Risk Manager, Regulator
+ 
+5. Sequence Diagrams
+5.1  Sequence: Run Monte Carlo Simulation
+Covers the end-to-end flow from the Risk Manager clicking 'Run' to receiving computed PFE, CVA, and WWR metrics.
+
+        SEQUENCE DIAGRAM — Run Monte Carlo Simulation
+
+  RiskManager   Browser/UI    Backend       RiskEngine(C++)   Database
+       │             │            │                │               │
+       │──Run Sim──►│            │                │               │
+       │             │──POST /run►│                │               │
+       │             │            │──Validate─────►│               │
+       │             │            │  inputs        │               │
+       │             │            │──Fetch Static──────────────────►│
+       │             │            │  Data          │               │
+       │             │            │◄──────────────────── Portfolio │
+       │             │            │              Data              │
+       │             │            │──Dispatch─────►│               │
+       │             │            │  Sim Job       │               │
+       │             │            │                │──Init Thread  │
+       │             │            │                │  Local RNG    │
+       │             │            │                │──Cholesky     │
+       │             │            │                │  Decomp       │
+       │             │            │                │               │
+       │             │            │         [For each path 1..10k] │
+       │             │            │                │──Generate Z   │
+       │             │            │                │  N(0,1) shocks│
+       │             │            │                │──Apply corr.  │
+       │             │            │                │  (multiply    │
+       │             │            │                │   Cholesky)   │
+       │             │            │                │──Update price │
+       │             │            │                │  via GBM      │
+       │             │            │                │──calc max(V,0)│
+       │             │            │         [End loop]             │
+       │             │            │                │               │
+       │             │            │                │──Aggregate    │
+       │             │            │                │  Distributions│
+       │             │            │                │──Compute PFE  │
+       │             │            │                │  (99th pctile)│
+       │             │            │                │──Compute EPE  │
+       │             │            │                │──Compute CVA  │
+       │             │            │                │──Compute WWR  │
+       │             │            │◄──RiskMetrics─ │               │
+       │             │            │──Store──────────────────────────►│
+       │             │            │  Metrics                       │
+       │             │◄──JSON─────│                │               │
+       │             │  Response  │                │               │
+       │◄──Update────│            │                │               │
+       │  Dashboard  │            │                │               │
+       │             │            │                │               │
+ 
+5.2  Sequence: Margin Call Trigger
+Covers the automated and manual margin call workflows — from exposure threshold breach to counterparty notification.
+
+          SEQUENCE DIAGRAM — Margin Call Trigger
+
+  RiskEngine    Backend    RiskManager   Counterparty    Database
+      │             │           │              │             │
+  [After each simulation tick]  │              │             │
+      │──Exposure───►│           │              │             │
+      │  exceeds     │           │              │             │
+      │  Collateral  │           │              │             │
+      │             │──Alert────►│              │             │
+      │             │  Margin    │              │             │
+      │             │  Breach    │              │             │
+      │             │           │──Review───────│             │
+      │             │           │  Exposure     │             │
+      │             │           │  Details      │             │
+      │             │           │               │             │
+   alt [Manual Override]        │               │             │
+      │             │           │──Adjust───────│             │
+      │             │           │  Threshold    │             │
+      │             │           │               │             │
+   alt [Confirm Margin Call]    │               │             │
+      │             │◄──Confirm─│               │             │
+      │             │           │               │             │
+      │             │──Send Margin Call─────────►│             │
+      │             │  Notification  │           │             │
+      │             │──Log Event──────────────────────────────►│
+      │             │  (Audit Trail)                          │
+      │             │           │◄──Collateral──│             │
+      │             │           │  Top-up       │             │
+      │             │           │  Received     │             │
+      │             │──Update───►│               │             │
+      │             │  Collateral│               │             │
+      │             │  Balance   │               │             │
+      │──Re-run─────►│           │               │             │
+      │  Exposure    │           │               │             │
+      │  Check       │           │               │             │
+      │             │──Status───►│               │             │
+      │             │  Resolved  │               │             │
+ 
+5.3  Sequence: User Login & Role-Based Access
+
+          SEQUENCE DIAGRAM — Login & Role-Based Access
+
+   User/Browser     Backend/Auth       Database     RiskEngine
+        │                │                 │               │
+        │──POST /login──►│                 │               │
+        │{username, pwd} │                 │               │
+        │                │──Query User─────►│               │
+        │                │                 │               │
+  alt [User Not Found]   │                 │               │
+        │                │◄──404 Not Found─│               │
+        │◄──401──────────│                 │               │
+  alt [Valid Credentials]                  │               │
+        │                │◄──User + Role───│               │
+        │                │  (ADMIN /       │               │
+        │                │  RISK_MANAGER / │               │
+        │                │   AUDITOR)      │               │
+        │                │──Generate JWT   │               │
+        │◄──JWT Token────│                 │               │
+        │                │                 │               │
+  [Subsequent requests]  │                 │               │
+        │──GET /api/pfe──►│                 │               │
+        │  Authorization: │                 │               │
+        │  Bearer <token> │                 │               │
+        │                │──Validate JWT    │               │
+        │                │──Check Role      │               │
+  alt [RISK_MANAGER]     │                 │               │
+        │                │──Dispatch────────────────────────►│
+        │                │  simulation job  │               │
+        │◄──Metrics──────│                 │               │
+  alt [AUDITOR — Read Only]               │               │
+        │                │──Query──────────►│               │
+        │                │  Metrics Only    │               │
+        │◄──Read-Only────│                 │               │
+  alt [Unauthorized Role]│                 │               │
+        │◄──403──────────│                 │               │
+ 
+6. Activity Diagrams
+6.1  Activity: Monte Carlo Simulation Pipeline
+Captures the step-by-step process flow inside the C++ Risk Engine for one full simulation run.
+
+       ACTIVITY DIAGRAM — Monte Carlo Simulation Pipeline
+
+             ●  (Start)
+             │
+             ▼
+  ┌─────────────────────────────┐
+  │  Receive Simulation Request  │
+  │  (params: paths, horizon,    │
+  │   mu, sigma, rho, portfolio) │
+  └──────────────┬──────────────┘
+                 │
+                 ▼
+  ┌─────────────────────────────┐
+  │  Validate Input Parameters   │
+  └──────────┬──────────────────┘
+             │                      ┌──────────────────────┐
+         [Valid?] ── No ───────────►│  Return Error to UI  │
+             │ Yes                  └──────────────────────┘
+             ▼
+  ┌─────────────────────────────┐
+  │  Init Thread-Local RNGs      │
+  │  (xoroshiro128+)             │
+  └──────────────┬──────────────┘
+                 │
+                 ▼
+  ┌─────────────────────────────┐
+  │  Compute Cholesky           │
+  │  Decomposition (for WWR)     │
+  │  (done once; shared memory) │
+  └──────────────┬──────────────┘
+                 │
+  ┌──────────────▼──────────────┐
+  │  [PARALLEL — each path i]   │  ◄──────────────────────┐
+  └──────────────┬──────────────┘                         │
+                 │                                        │
+                 ▼                                        │
+  ┌─────────────────────────────┐                        │
+  │  Generate Z ~ N(0,1)         │                        │
+  │  via inverse CDF approx      │                        │
+  └──────────────┬──────────────┘                        │
+                 │                                        │
+                 ▼                                        │
+  ┌─────────────────────────────┐                        │
+  │  Apply Cholesky: correlated  │                        │
+  │  shocks for WWR modelling    │                        │
+  └──────────────┬──────────────┘                        │
+                 │                                        │
+                 ▼                                        │
+  ┌─────────────────────────────┐                        │
+  │  Step time-forward via GBM   │                        │
+  │  S_{t+dt} = S_t * exp(...)  │                        │
+  └──────────────┬──────────────┘                        │
+                 │                                        │
+              [Jump?]                                     │
+             Yes │   No                                   │
+                 │    └──────────────────────────────────►│
+                 ▼                                        │
+  ┌─────────────────────────────┐                        │
+  │  Apply Jump-at-Default:      │                        │
+  │  S → S * (1 + y)            │──────────────────────►│
+  └─────────────────────────────┘                        │
+                                     (loop over all time │
+                                      steps 1..T)         │
+                                                          │
+            (all paths complete) ───────────────────────►│
+                 │                                        │
+                 ▼
+  ┌─────────────────────────────┐
+  │  Compute Exposure per path:  │
+  │  E_i(t) = max(V_i(t), 0)    │
+  └──────────────┬──────────────┘
+                 │
+                 ▼
+  ┌─────────────────────────────┐
+  │  Aggregate into Distribution │
+  │  (exposure array at each t)  │
+  └──────────────┬──────────────┘
+                 │
+                 ▼
+  ┌──────────────────────────────────────────────┐
+  │  Compute Risk Metrics:                        │
+  │  PFE = 99th percentile (quickselect)         │
+  │  EPE = mean(positive exposures)              │
+  │  CVA = Σ EPE(t) * PD(t) * (1 - Recovery)    │
+  │  WWR adjustment (if rho > 0)                 │
+  └──────────────┬───────────────────────────────┘
+                 │
+                 ▼
+  ┌─────────────────────────────┐
+  │  Check: Exposure > Collateral│
+  └──────┬──────────────────────┘
+         │ Yes                 │ No
+         ▼                     ▼
+  ┌──────────────┐    ┌────────────────────┐
+  │ Trigger Margin│    │ Return Metrics     │
+  │ Call Alert   │    │ to Backend / UI    │
+  └──────────────┘    └────────────────────┘
+         │                     │
+         └──────────┬──────────┘
+                    ▼
+                    ⊙  (End)
+ 
+6.2  Activity: Margin Call Decision & Resolution
+
+       ACTIVITY DIAGRAM — Margin Call Decision & Resolution
+
+          ●  (Start — triggered by exposure breach)
+          │
+          ▼
+  ┌───────────────────────────┐
+  │ Compute Excess Exposure    │
+  │ = Current PFE - Collateral │
+  └─────────────┬─────────────┘
+                │
+         [Excess > Threshold?]
+         Yes │          │ No
+             │          ▼
+             │  ┌───────────────────┐
+             │  │ Log & Monitor;    │
+             │  │ No Action         │──► ⊙ End
+             │  └───────────────────┘
+             ▼
+  ┌───────────────────────────┐
+  │ Generate Margin Call       │
+  │ (amount, due date, reason) │
+  └─────────────┬─────────────┘
+                │
+                ▼
+  ┌───────────────────────────┐
+  │ Notify Risk Manager       │
+  │ (Dashboard Alert + Email) │
+  └─────────────┬─────────────┘
+                │
+      [Risk Manager reviews]
+                │
+     ┌──────────┴────────────┐
+     │ Approve               │ Override / Dismiss
+     ▼                       ▼
+  ┌──────────────────┐  ┌──────────────────────────┐
+  │ Send Margin Call  │  │ Log Override with Reason  │
+  │ to Counterparty  │  │ (Audit trail entry)       │──► ⊙ End
+  └────────┬─────────┘  └──────────────────────────┘
+           │
+    [Within MPoR window?]
+    Yes │           │ No
+        ▼           ▼
+  ┌──────────────────────┐  ┌──────────────────────┐
+  │ Await Collateral     │  │ Escalate: Mark as    │
+  │ Top-up from          │  │ Uncollateralised      │
+  │ Counterparty         │  │ Exposure; Report      │
+  └──────────┬───────────┘  └──────────────────────┘
+             │
+    [Collateral received?]
+    Yes │           │ No (timeout)
+        ▼           ▼
+  ┌──────────────┐  ┌──────────────────────────────┐
+  │ Update        │  │ Trigger Escalation:           │
+  │ Collateral    │  │ Senior Risk / Regulator Alert │
+  │ Balance       │  └──────────────────────────────┘
+  └──────┬────────┘
+         │
+  ┌──────▼──────────────┐
+  │ Re-run Exposure Check│
+  │ (close if resolved)  │
+  └──────────────────────┘
+         │
+         ▼
+         ⊙  (End)
+ 
+7. Implementation Decisions (Resolved)
+All design decisions have been finalised. The table below records how each previously open question was resolved in the final implementation.
+
+Area	Decision Made	Details
+System Architecture	Python / FastAPI backend; C++ pybind11 engine; SvelteKit frontend	Three-tier: browser ↔ FastAPI (port 8000) ↔ C++ shared library (.so via pybind11)
+Database Schema	PostgreSQL 16 + TimescaleDB extension	Tables: counterparties, portfolios, derivatives, simulation_runs, risk_metrics, margin_calls, sim_presets, audit_log, users, price_history (TimescaleDB hypertable)
+Authentication	JWT (HS256); three roles: ADMIN, RISK_MANAGER, AUDITOR	Login via username/password (form-encoded); 8-hour token expiry; role checked per endpoint
+API Spec	35 REST endpoints + 1 WebSocket (/ws/simulate)	Base path /api/v1/; WebSocket streams progress events then final RiskMetrics JSON
+Deployment	Local demo; uv for Python deps; Vite dev server for frontend	Backend: uv run uvicorn server.main:app; Frontend: npm run dev (port 5173)
