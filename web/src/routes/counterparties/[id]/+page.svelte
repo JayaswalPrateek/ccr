@@ -22,6 +22,15 @@
   let summary: CpSummary | null = null;
   let backtest: BacktestResult | null = null;
 
+  // Inline add-portfolio form
+  let addingPortfolio = false;
+  let portForm = { collateral: 0, auto_run: false };
+
+  // Inline add-derivative form: keyed by portfolio id, null = closed
+  let addingDerivFor: string | null = null;
+  let derivForm = { deriv_type: 'IRS', notional: 1_000_000, maturity_years: 5,
+                    underlying_price: 0.05, strike: 0.05, cash_flow_freq: 2 };
+
   $: id = $page.params.id!;
 
   onMount(async () => {
@@ -49,32 +58,33 @@
     } catch (e) { error = e instanceof Error ? e.message : 'Error'; }
   }
 
-  async function addPortfolio() {
+  async function submitPortfolio() {
     if (!cp) return;
-    const extId = prompt('Portfolio external ID:');
-    if (!extId) return;
+    const n = (cp.portfolios ?? []).length + 1;
     try {
       const p = await api.createPortfolio({
-        external_id: extId,
+        external_id:     `${cp.external_id}-PORT-${n}`,
         counterparty_id: cp.id,
-        collateral: 0,
-        net_value: 0,
-        auto_run: false,
+        collateral:      portForm.collateral,
+        net_value:       0,
+        auto_run:        portForm.auto_run,
       });
       cp = { ...cp, portfolios: [...(cp.portfolios ?? []), p] };
+      addingPortfolio = false;
+      portForm = { collateral: 0, auto_run: false };
     } catch (e) { error = e instanceof Error ? e.message : 'Error'; }
   }
 
-  async function addDerivative(portfolioId: string) {
+  async function submitDerivative(portfolioId: string) {
     try {
       const d = await api.addDerivative(portfolioId, {
-        external_id: `DERIV-${Date.now()}`,
-        deriv_type: 'IRS',
-        notional: 1_000_000,
-        maturity_years: 5,
-        underlying_price: 0.05,
-        strike: 0.05,
-        cash_flow_freq: 2,
+        external_id:     `DERIV-${Date.now()}`,
+        deriv_type:      derivForm.deriv_type,
+        notional:        derivForm.notional,
+        maturity_years:  derivForm.maturity_years,
+        underlying_price: derivForm.underlying_price,
+        strike:          derivForm.strike,
+        cash_flow_freq:  derivForm.cash_flow_freq,
       });
       if (!cp) return;
       cp = {
@@ -85,6 +95,9 @@
             : p
         ),
       };
+      addingDerivFor = null;
+      derivForm = { deriv_type: 'IRS', notional: 1_000_000, maturity_years: 5,
+                    underlying_price: 0.05, strike: 0.05, cash_flow_freq: 2 };
     } catch (e) { error = e instanceof Error ? e.message : 'Error'; }
   }
 
@@ -183,9 +196,28 @@
     <div class="card-header">
       <span class="card-title">Portfolios ({(cp.portfolios ?? []).length})</span>
       <RoleGuard roles={['ADMIN', 'RISK_MANAGER']}>
-        <button class="btn btn-ghost btn-sm" on:click={addPortfolio}>+ Add Portfolio</button>
+        <button class="btn btn-ghost btn-sm" on:click={() => { addingPortfolio = !addingPortfolio; }}>
+          {addingPortfolio ? 'Cancel' : '+ Add Portfolio'}
+        </button>
       </RoleGuard>
     </div>
+
+    {#if addingPortfolio}
+      <div style="padding:.75rem 0;border-top:1px solid var(--border)">
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Collateral</label>
+            <input class="form-input" type="number" bind:value={portForm.collateral} min="0" step="10000" placeholder="0" />
+          </div>
+          <div class="form-group" style="display:flex;align-items:center;gap:.5rem;padding-top:1.4rem">
+            <input type="checkbox" id="auto_run_chk" bind:checked={portForm.auto_run} />
+            <label for="auto_run_chk" class="form-label" style="margin:0">Auto-run on market refresh</label>
+          </div>
+        </div>
+        <button class="btn btn-success btn-sm" on:click={submitPortfolio}>Create Portfolio</button>
+      </div>
+    {/if}
+
     {#each cp.portfolios ?? [] as port}
       <div class="portfolio-item">
         <div
@@ -218,13 +250,58 @@
                     </tr>
                   {/each}
                   {#if (port.derivatives ?? []).length === 0}
-                    <tr><td colspan="6" style="color:var(--muted);text-align:center">No derivatives</td></tr>
+                    <tr><td colspan="6" style="color:var(--muted);text-align:center">No derivatives yet.</td></tr>
                   {/if}
                 </tbody>
               </table>
             </div>
+
             <RoleGuard roles={['ADMIN', 'RISK_MANAGER']}>
-              <button class="btn btn-ghost btn-sm" style="margin-top:.5rem" on:click={() => addDerivative(port.id)}>+ Add Derivative</button>
+              {#if addingDerivFor === port.id}
+                <div style="margin-top:.75rem;padding:.75rem;background:var(--surface2);border-radius:6px">
+                  <div class="form-row">
+                    <div class="form-group">
+                      <label class="form-label">Type</label>
+                      <select class="form-select" bind:value={derivForm.deriv_type}>
+                        {#each ['IRS','CDS','FX','EQUITY','COMMODITY'] as t}<option>{t}</option>{/each}
+                      </select>
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">Notional</label>
+                      <input class="form-input" type="number" bind:value={derivForm.notional} min="0" step="100000" />
+                    </div>
+                  </div>
+                  <div class="form-row">
+                    <div class="form-group">
+                      <label class="form-label">Maturity (years)</label>
+                      <input class="form-input" type="number" bind:value={derivForm.maturity_years} min="0.1" step="0.5" />
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">Cash Flow Freq / yr</label>
+                      <input class="form-input" type="number" bind:value={derivForm.cash_flow_freq} min="1" step="1" />
+                    </div>
+                  </div>
+                  <div class="form-row">
+                    <div class="form-group">
+                      <label class="form-label">Underlying Price</label>
+                      <input class="form-input" type="number" bind:value={derivForm.underlying_price} step="0.001" />
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">Strike</label>
+                      <input class="form-input" type="number" bind:value={derivForm.strike} step="0.001" />
+                    </div>
+                  </div>
+                  <div style="display:flex;gap:.5rem">
+                    <button class="btn btn-success btn-sm" on:click={() => submitDerivative(port.id)}>Add</button>
+                    <button class="btn btn-ghost btn-sm" on:click={() => addingDerivFor = null}>Cancel</button>
+                  </div>
+                </div>
+              {:else}
+                <button class="btn btn-ghost btn-sm" style="margin-top:.5rem"
+                  on:click={() => { addingDerivFor = port.id; derivForm = { deriv_type: 'IRS', notional: 1_000_000, maturity_years: 5, underlying_price: 0.05, strike: 0.05, cash_flow_freq: 2 }; }}>
+                  + Add Derivative
+                </button>
+              {/if}
             </RoleGuard>
           </div>
         {/if}
@@ -331,7 +408,10 @@
               <td>{fmtNum(mc.amount, 0)}</td>
               <td style="color:var(--red)">{fmtNum(mc.excess_exposure, 0)}</td>
               <td class="text-muted">{new Date(mc.issued_at).toLocaleDateString()}</td>
-              <td style="font-size:.78rem;color:var(--muted)">{mc.reason.slice(0,60)}</td>
+              <td class="reason-cell" style="font-size:.78rem;color:var(--muted)">
+                <span class="reason-text">{mc.reason}</span>
+                <span class="reason-tip">{mc.reason}</span>
+              </td>
             </tr>
           {/each}
           {#if mcs.length === 0}
@@ -350,4 +430,20 @@
     padding: .65rem 0; cursor: pointer; font-size: .85rem; font-weight: 500;
   }
   .portfolio-header:hover { color: var(--text); }
+
+  .reason-cell { position: relative; max-width: 220px; }
+  .reason-text {
+    display: block; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; cursor: default;
+  }
+  .reason-tip {
+    display: none;
+    position: absolute; left: 0; top: calc(100% + 4px); z-index: 200;
+    background: var(--surface2, #1e293b); color: var(--text, #e2e8f0);
+    border: 1px solid var(--border, #334155); border-radius: 5px;
+    padding: .4rem .6rem; font-size: .78rem; line-height: 1.4;
+    white-space: normal; min-width: 200px; max-width: 360px;
+    box-shadow: 0 4px 16px rgba(0,0,0,.4); pointer-events: none;
+  }
+  .reason-cell:hover .reason-tip { display: block; }
 </style>

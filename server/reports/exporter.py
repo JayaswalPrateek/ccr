@@ -332,8 +332,8 @@ def export_simulation_pdf(
     findings = [
         f"<b>CVA:</b> {_fmt(cva_val)} computed via Monte Carlo (GBM, Kahan summation).{cva_vs_stress}",
         f"<b>Margin:</b> {'Breach detected — required ' + _fmt(margin_val, 0) + ' in initial margin.' if margin_val > 0 else 'No margin breach — portfolio is within collateral limits.'}",
-        f"<b>Peak PFE:</b> {_fmt(peak_pfe, 0)} at T={peak_t:.2f}y (95th percentile of simulated exposures).",
-        f"<b>Engine:</b> Compute time {compute_s} · SIMD arch: {arch} · width: {simd}.",
+        f"<b>Peak PFE:</b> {_fmt(peak_pfe, 0)} at T={peak_t:.2f}y (99th percentile of simulated exposures).",
+        f"<b>Engine:</b> {arch} · {base.get('paths_used', 0):,} paths simulated.",
     ]
 
     summary_rows = [[Paragraph("Key Findings", bold9)]] + [
@@ -393,9 +393,6 @@ def export_simulation_pdf(
         risk_rows.append(_row("SA-CCR EAD (Basel III)", _fmt(sa_ccr.get("ead", 0.0), 0)))
         risk_rows.append(_row("  → RC",                 _fmt(sa_ccr.get("rc", 0.0), 0)))
         risk_rows.append(_row("  → AddOn",              _fmt(sa_ccr.get("add_on_aggregate", 0.0), 0)))
-    risk_rows.append(_row("Compute Time", f"{base.get('compute_time_us', 0):,} µs"))
-    if engine_info:
-        risk_rows.append(_row("Engine Arch", f"{arch} / {simd}-wide SIMD"))
 
     risk_tbl = Table(risk_rows, hAlign="LEFT", style=_table_style(has_header=True, stress_col=has_stress))
     # Colour CVA row
@@ -479,8 +476,7 @@ def export_simulation_pdf(
     # ── Footer ────────────────────────────────────────────────────────────────
     story.append(HRFlowable(width="100%", thickness=0.5, color=BORDER))
     story.append(Paragraph(
-        f"CCR Engine v1.0 &nbsp;|&nbsp; Arch: {arch} &nbsp;|&nbsp; "
-        f"SIMD width: {simd} &nbsp;|&nbsp; {now_str} &nbsp;|&nbsp; Confidential",
+        f"CCR Engine v1.0 &nbsp;|&nbsp; {now_str} &nbsp;|&nbsp; Confidential",
         small,
     ))
 

@@ -230,12 +230,16 @@
       {:else}
         <div style="display:flex;flex-direction:column;gap:.4rem">
           {#each myPresets as p}
-            <div class="preset-row" class:active={editId === p.id}>
+            <div class="preset-row" class:active={editId === p.id} class:shared={p.is_shared}>
               <div style="flex:1;min-width:0">
                 <div style="display:flex;align-items:center;gap:.4rem;flex-wrap:wrap">
                   <span style="font-weight:500;font-size:.85rem">{p.name}</span>
-                  {#if p.is_shared}<span class="badge badge-blue" style="font-size:.6rem">Shared</span>{/if}
-                  {#if p.counterparty_id}<span class="badge badge-muted" style="font-size:.6rem">{cpName(p.counterparty_id)}</span>{/if}
+                  {#if p.is_shared}
+                    <span class="badge badge-blue shared-badge" title="Visible to all team members — anyone can run this preset">
+                      ⇄ Shared
+                    </span>
+                  {/if}
+                  {#if p.counterparty_id}<span class="badge badge-muted" style="font-size:.7rem">{cpName(p.counterparty_id)}</span>{/if}
                 </div>
                 {#if p.description}
                   <div style="font-size:.75rem;color:var(--muted);margin-top:.15rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{p.description}</div>
@@ -323,9 +327,17 @@
         </select>
       </div>
 
-      <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.5rem;font-size:.78rem">
-        <input type="checkbox" id="shared" bind:checked={editShared} />
-        <label for="shared" style="cursor:pointer;color:var(--text-2)">Share with team</label>
+      <div style="margin-bottom:.75rem">
+        <div style="display:flex;align-items:center;gap:.5rem;font-size:.78rem">
+          <input type="checkbox" id="shared" bind:checked={editShared} />
+          <label for="shared" style="cursor:pointer;color:var(--text)">Share with team</label>
+          {#if editShared}<span class="badge badge-blue" style="font-size:.68rem">⇄ Shared</span>{/if}
+        </div>
+        {#if editShared}
+          <div style="font-size:.7rem;color:var(--muted);margin-top:.3rem;padding-left:1.4rem;line-height:1.5">
+            All users (including Auditors) can view and run this preset. Only you can edit or delete it.
+          </div>
+        {/if}
       </div>
 
       <div class="form-group" style="margin-bottom:.5rem">
@@ -397,9 +409,16 @@
     gap: .5rem;
     padding: .5rem .6rem;
     border: 1px solid var(--border);
+    border-left: 3px solid transparent;
     border-radius: var(--radius-sm);
     transition: var(--transition);
   }
-  .preset-row:hover { background: var(--surface2); }
+  .preset-row:hover  { background: var(--surface2); }
   .preset-row.active { border-color: var(--blue); background: rgba(59,130,246,.05); }
+  .preset-row.shared { border-left-color: var(--blue); }
+
+  .shared-badge {
+    font-size: .72rem;
+    cursor: default;
+  }
 </style>

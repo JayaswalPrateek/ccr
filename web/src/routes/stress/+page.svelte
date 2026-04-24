@@ -87,6 +87,7 @@
         {/if}
       </div>
       <StressScenarioForm
+        value={stress}
         on:apply={handleStressApply}
         on:clear={handleStressClear}
       />

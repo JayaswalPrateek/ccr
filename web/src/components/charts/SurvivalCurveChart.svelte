@@ -118,4 +118,6 @@
   onDestroy(() => { chart?.destroy(); });
 </script>
 
-<canvas bind:this={canvas} style="height:{height}px"></canvas>
+<div class="chart-wrap" style="height:{height}px">
+  <canvas bind:this={canvas}></canvas>
+</div>

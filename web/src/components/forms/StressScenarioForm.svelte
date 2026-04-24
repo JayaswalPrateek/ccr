@@ -18,6 +18,19 @@
   let jump_amplitude:      number = 0;
   let label:               string = 'stress';
 
+  // Sync local state from the value prop whenever the parent updates it
+  // (e.g. after "Apply Stress" is confirmed, or when navigating back to this page)
+  $: if (value) {
+    vol_shock           = value.vol_shock           ?? 0;
+    fx_shock            = value.fx_shock            ?? 0;
+    equity_shock        = value.equity_shock        ?? 0;
+    interest_rate_shock = value.interest_rate_shock ?? 0;
+    credit_spread_shock = value.credit_spread_shock ?? 0;
+    hazard_rate_shock   = value.hazard_rate_shock   ?? 0;
+    jump_amplitude      = value.jump_amplitude      ?? 0;
+    label               = value.label               ?? 'stress';
+  }
+
   function fmt(v: number, decimals = 2) {
     return v >= 0 ? `+${v.toFixed(decimals)}` : v.toFixed(decimals);
   }
@@ -36,20 +49,29 @@
     dispatch('clear');
   }
 
-  const sliders: Array<{
-    key: keyof StressScenarioRequest;
-    label: string;
-    min: number; max: number; step: number;
-    get: () => number;
-    set: (v: number) => void;
-  }> = [
-    { key: 'vol_shock',           label: 'Vol Shock',           min: -0.5, max: 2.0,  step: 0.05, get: () => vol_shock,           set: (v) => (vol_shock = v) },
-    { key: 'fx_shock',            label: 'FX Shock',            min: -0.3, max: 0.3,  step: 0.01, get: () => fx_shock,            set: (v) => (fx_shock = v) },
-    { key: 'equity_shock',        label: 'Equity Shock',        min: -0.5, max: 0.5,  step: 0.01, get: () => equity_shock,        set: (v) => (equity_shock = v) },
-    { key: 'interest_rate_shock', label: 'Rate Shock',          min: -0.05,max: 0.05, step: 0.001,get: () => interest_rate_shock, set: (v) => (interest_rate_shock = v) },
-    { key: 'credit_spread_shock', label: 'Credit Spread Shock', min: -0.02,max: 0.10, step: 0.001,get: () => credit_spread_shock, set: (v) => (credit_spread_shock = v) },
-    { key: 'hazard_rate_shock',   label: 'Hazard Rate Shock',   min: -0.05,max: 0.30, step: 0.005,get: () => hazard_rate_shock,   set: (v) => (hazard_rate_shock = v) },
-    { key: 'jump_amplitude',      label: 'Jump Amplitude',      min:  0,   max: 0.50, step: 0.01, get: () => jump_amplitude,      set: (v) => (jump_amplitude = v) },
+  // Static slider metadata — no closures, no getters
+  const sliders = [
+    { key: 'vol_shock',           label: 'Vol Shock',           min: -0.5,  max: 2.0,  step: 0.05  },
+    { key: 'fx_shock',            label: 'FX Shock',            min: -0.3,  max: 0.3,  step: 0.01  },
+    { key: 'equity_shock',        label: 'Equity Shock',        min: -0.5,  max: 0.5,  step: 0.01  },
+    { key: 'interest_rate_shock', label: 'Rate Shock',          min: -0.05, max: 0.05, step: 0.001 },
+    { key: 'credit_spread_shock', label: 'Credit Spread Shock', min: -0.02, max: 0.10, step: 0.001 },
+    { key: 'hazard_rate_shock',   label: 'Hazard Rate Shock',   min: -0.05, max: 0.30, step: 0.005 },
+    { key: 'jump_amplitude',      label: 'Jump Amplitude',      min:  0,    max: 0.50, step: 0.01  },
+  ] as const;
+
+  // Reactive snapshot — Svelte CAN track these direct variable reads
+  $: vals = [vol_shock, fx_shock, equity_shock, interest_rate_shock,
+             credit_spread_shock, hazard_rate_shock, jump_amplitude];
+
+  const setters = [
+    (v: number) => { vol_shock           = v; },
+    (v: number) => { fx_shock            = v; },
+    (v: number) => { equity_shock        = v; },
+    (v: number) => { interest_rate_shock = v; },
+    (v: number) => { credit_spread_shock = v; },
+    (v: number) => { hazard_rate_shock   = v; },
+    (v: number) => { jump_amplitude      = v; },
   ];
 </script>
 
@@ -59,17 +81,17 @@
     <input id="stress-label" class="form-input" bind:value={label} placeholder="stress" />
   </div>
 
-  {#each sliders as s}
+  {#each sliders as s, i}
     <div class="slider-row">
       <div class="slider-header">
         <span class="form-label">{s.label}</span>
-        <span class="slider-val" class:nonzero={s.get() !== 0}>{fmt(s.get())}</span>
+        <span class="slider-val" class:nonzero={vals[i] !== 0}>{fmt(vals[i])}</span>
       </div>
       <input
         type="range"
         min={s.min} max={s.max} step={s.step}
-        value={s.get()}
-        on:input={(e) => s.set(parseFloat((e.target as HTMLInputElement).value))}
+        value={vals[i]}
+        on:input={(e) => setters[i](parseFloat((e.target as HTMLInputElement).value))}
       />
       <div class="slider-range">
         <span>{s.min}</span><span>{s.max}</span>
